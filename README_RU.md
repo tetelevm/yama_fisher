@@ -36,12 +36,15 @@
 
 ## Установка
 
-- скачай проект как zip-файл по кнопочке GH или по
-  [ссылке](https://github.com/tetelevm/yama_fisher/archive/refs/heads/main.zip)
+- скачай последнюю версию проекта по
+  [ссылке](https://github.com/tetelevm/yama_fisher/releases/download/v1.0.0/yama_fisher.zip)
 - открой в firefox в новой вкладке `about:debugging#/runtime/this-firefox`
 - в `Load Temporary Add-on…` выбери этот файл-архив
 - перейди на Я.Му на страницу альбома и нажми на иконку расширения (возможно,
   спрячется в общей иконке расширений)
+
+Либо можно скачать весь проект и указать для firefox напрямую `manifest.json`, но в
+этом случае вы и сами знаете, что делать.
 
 ## По всем вопросам
 

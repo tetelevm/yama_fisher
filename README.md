@@ -41,12 +41,16 @@ Screenshots:
 
 ## Installation
 
-- Download the project as a ZIP file using the GitHub button or this
-  [direct link](https://github.com/tetelevm/yama_fisher/archive/refs/heads/main.zip).
+- Download the latest project release from this
+  [link](https://github.com/tetelevm/yama_fisher/releases/download/v1.0.0/yama_fisher.zip).
 - Open `about:debugging#/runtime/this-firefox` in a new Firefox tab.
 - Under `Load Temporary Add-on…`, select the downloaded archive.
 - Open an album page on Yandex Music and click the extension icon. It may be
   hidden under Firefox's general extensions icon.
+
+Alternatively, download the entire project and point Firefox directly to
+`manifest.json`. If you choose this option, you probably already know what to
+do.
 
 ## Questions
 
