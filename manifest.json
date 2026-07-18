@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "YaMa Fisher",
+  "version": "1.0.0",
+  "description": "Download Yandex Music albums in Firefox",
+  "icons": {
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "action": {
+    "default_icon": "assets/icons/icon-128.png",
+    "default_popup": "popup/popup.html",
+    "default_title": "YaMa Fisher"
+  },
+  "background": {
+    "scripts": [
+      "src/protocol.js",
+      "src/config.js",
+      "src/collection-types.js",
+      "assets/vendor/browser-id3-writer.6.0.0.mjs",
+      "src/background/downloads-adapter.js",
+      "src/background/download-state.js",
+      "src/background/page-bridge.js",
+      "src/background/track-pipeline.js",
+      "src/background/download-scheduler.js",
+      "src/background/background.js"
+    ]
+  },
+  "content_scripts": [{
+    "matches": [
+      "https://music.yandex.ru/*",
+      "https://music.yandex.com/*",
+      "https://music.yandex.kz/*",
+      "https://music.yandex.by/*",
+      "https://music.yandex.uz/*"
+    ],
+    "js": ["src/protocol.js", "src/content/content.js"],
+    "run_at": "document_idle"
+  }],
+  "permissions": ["tabs", "scripting", "downloads", "storage"],
+  "host_permissions": [
+    "https://music.yandex.ru/*",
+    "https://music.yandex.com/*",
+    "https://music.yandex.kz/*",
+    "https://music.yandex.by/*",
+    "https://music.yandex.uz/*",
+    "https://oauth.yandex.ru/*",
+    "https://api.music.yandex.ru/*",
+    "https://*.yandex.net/*",
+    "https://*.yandex.ru/*",
+    "https://*.yandex.com/*"
+  ]
+}
