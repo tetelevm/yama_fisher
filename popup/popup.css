@@ -21,6 +21,30 @@ body {
     background: #1d1d1d;
 }
 
+.popup__links {
+    display: flex;
+    justify-content: flex-end;
+    margin: -5px 0 7px;
+}
+
+.github-link {
+    color: #929292;
+    font-size: 10px;
+    line-height: 1;
+    text-decoration: none;
+}
+
+.github-link:hover {
+    color: #c7c7c7;
+    text-decoration: underline;
+}
+
+.github-link:focus-visible {
+    border-radius: 2px;
+    outline: 1px solid #929292;
+    outline-offset: 3px;
+}
+
 .screen {
     display: grid;
     gap: 14px;
@@ -109,13 +133,6 @@ body {
     min-width: 0;
 }
 
-.collection__buttons {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: auto;
-}
-
 .eyebrow {
     margin: 0 0 4px;
     color: #929292;
@@ -194,10 +211,11 @@ body {
     background: #7b5938;
 }
 
-.button--download,
-.button--github {
+.button--download {
     width: auto;
     min-height: 34px;
+    align-self: flex-start;
+    margin-top: auto;
     padding: 6px 14px;
     font-size: 13px;
 }
@@ -303,21 +321,21 @@ body {
 }
 
 .download-control--retry {
-    --control-bg: #6b4c30;
-    --control-color: #efd2ad;
-    --control-hover: #7b5938;
+    --control-bg: #87483a;
+    --control-color: #f4d7cf;
+    --control-hover: #8f4f40;
 }
 
 .download-control--pause {
-    --control-bg: #806a22;
-    --control-color: #fff0b0;
-    --control-hover: #9a812c;
+    --control-bg: #344b5c;
+    --control-color: #c7d7e1;
+    --control-hover: #405d70;
 }
 
 .download-control--resume {
-    --control-bg: #2f704b;
-    --control-color: #e0f7e8;
-    --control-hover: #39875a;
+    --control-bg: #456a83;
+    --control-color: #e5f2f8;
+    --control-hover: #4a7089;
 }
 
 .download-control--stopped {

@@ -155,8 +155,8 @@ Responsibilities are distributed as follows:
 - `src/background/download-scheduler.js` manages the queue, concurrency,
   worker gating, and retries;
 - `src/background/background.js` routes messages;
-- `popup/popup.html` contains the static popup shell and template insertion
-  points;
+- `popup/popup.html` contains the static popup shell, the upper-right GitHub
+  text link, and template insertion points;
 - `popup/collection-card.html` contains the collection card template;
 - `popup/downloads.html` contains the downloads panel, collection, and track
   templates;
@@ -168,7 +168,8 @@ The background entry point remains a thin router. Before requesting state, the
 popup loads both packaged HTML template files. It inserts the collection card
 and downloads panel into the shell once, then clones collection and track
 templates for download-state snapshots. Template loading does not require
-network access.
+network access. The GitHub link remains in the shell because it belongs to the
+whole popup rather than the collection card.
 
 Every user-facing value replaced at runtime has a representative valid example
 in its HTML template; only containers that receive cloned children may be

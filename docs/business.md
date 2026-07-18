@@ -32,8 +32,8 @@ The user opens the desired album page at `/album/<id>`. Before downloading, the
 popup displays the album title, artist, cover, and track list. Playlist, artist,
 and individual-track links are recognized but cannot be downloaded yet. The
 extension reports that these features are not implemented. The collection card
-also provides the primary download action and a secondary link to the project's
-GitHub page.
+provides the primary download action. A small text link to the project's GitHub
+page remains in the popup's upper-right corner.
 
 ### 3. Starting a download
 
@@ -63,6 +63,9 @@ current progress but releases its active download slot, allowing the next
 queued track to start. Resuming that track continues it when a slot becomes
 available. Failed tracks can be retried, and their failures do not prevent
 later tracks from starting.
+
+Track controls use muted action colors: Pause is dark blue-gray, Resume is
+blue, and Retry is red-orange.
 
 A square stop button appears before Downloads. It is dark gray while workers
 are running and becomes light gray with a green outline while they are stopped.
