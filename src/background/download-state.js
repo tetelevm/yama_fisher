@@ -213,7 +213,7 @@
         scheduleProgressPersist();
     }
 
-    async function createDownloadJob(collection, tabId) {
+    async function createDownloadJob(collection, tabId, sourceOrigin = null) {
         await ready;
         const trackTitles = collection.metadata?.trackTitles || {};
         const job = {
@@ -223,6 +223,7 @@
             collectionTitle: collection?.title || 'Untitled',
             collectionSubtitle: collection?.subtitle || '',
             tabId,
+            sourceOrigin,
             createdAt: Date.now(),
             isPaused: false,
             tracks: collection.entries.map((entry, index) => ({

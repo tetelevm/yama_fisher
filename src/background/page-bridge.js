@@ -4,6 +4,181 @@
 (() => {
     const background = globalThis.YMF_BACKGROUND ||= {};
     const {actions, collectionStateKind} = globalThis.YMF_PROTOCOL;
+    const MUSIC_HOST_PATTERN = /^music\.yandex\.(?:ru|com|kz|by|uz)$/;
+    const DEFAULT_MUSIC_ORIGIN = 'https://music.yandex.ru';
+    const RETRY_TAB_READY_TIMEOUT_MS = 30_000;
+    const temporaryRetryTabIds = new Set();
+
+    function callTabs(method, ...args) {
+        return new Promise((resolve, reject) => {
+            chrome.tabs[method](...args, result => {
+                if (chrome.runtime.lastError) {
+                    return reject(new Error(chrome.runtime.lastError.message));
+                }
+                resolve(result);
+            });
+        });
+    }
+
+    function parseMusicUrl(value) {
+        try {
+            const url = new URL(value);
+            return url.protocol === 'https:' && MUSIC_HOST_PATTERN.test(url.hostname)
+                ? url
+                : null;
+        } catch {
+            return null;
+        }
+    }
+
+    async function getTabOrNull(tabId) {
+        if (!Number.isInteger(tabId)) return null;
+        try {
+            return await callTabs('get', tabId);
+        } catch {
+            return null;
+        }
+    }
+
+    async function getMusicTabOrigin(tabId) {
+        const tab = await getTabOrNull(tabId);
+        return parseMusicUrl(tab?.url)?.origin || null;
+    }
+
+    function waitForTabReady(tabId) {
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            const timeoutId = setTimeout(() => finish(
+                new Error('Timed out while opening a Yandex Music tab for retry')
+            ), RETRY_TAB_READY_TIMEOUT_MS);
+
+            function cleanup() {
+                clearTimeout(timeoutId);
+                // noinspection JSDeprecatedSymbols -- WebExtension events use removeListener.
+                chrome.tabs.onUpdated.removeListener(onUpdated);
+                // noinspection JSDeprecatedSymbols -- WebExtension events use removeListener.
+                chrome.tabs.onRemoved.removeListener(onRemoved);
+            }
+
+            function finish(error, tab) {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                error ? reject(error) : resolve(tab);
+            }
+
+            function onUpdated(updatedTabId, changeInfo, tab) {
+                if (updatedTabId === tabId && changeInfo.status === 'complete') {
+                    finish(null, tab);
+                }
+            }
+
+            function onRemoved(removedTabId) {
+                if (removedTabId === tabId) {
+                    finish(new Error('Yandex Music tab was closed while preparing retry'));
+                }
+            }
+
+            // noinspection JSDeprecatedSymbols -- WebExtension events still use addListener.
+            chrome.tabs.onUpdated.addListener(onUpdated);
+            // noinspection JSDeprecatedSymbols -- WebExtension events still use addListener.
+            chrome.tabs.onRemoved.addListener(onRemoved);
+            getTabOrNull(tabId).then(tab => {
+                if (!tab) return finish(new Error('Yandex Music tab is unavailable'));
+                if (tab.status === 'complete') finish(null, tab);
+            });
+        });
+    }
+
+    async function getReadyMusicTab(tab, preferredOrigin) {
+        if (!tab || tab.discarded || !Number.isInteger(tab.id)
+            || temporaryRetryTabIds.has(tab.id)) return null;
+        const initialOrigin = parseMusicUrl(tab.url)?.origin;
+        if (!initialOrigin || (preferredOrigin && initialOrigin !== preferredOrigin)) return null;
+        try {
+            const readyTab = tab.status === 'complete' ? tab : await waitForTabReady(tab.id);
+            const readyOrigin = parseMusicUrl(readyTab?.url)?.origin;
+            return readyOrigin && (!preferredOrigin || readyOrigin === preferredOrigin)
+                ? readyTab
+                : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function getRetryUrl(job, origin) {
+        if (job.collectionType === 'album' && job.collectionId) {
+            return `${origin}/album/${encodeURIComponent(job.collectionId)}`;
+        }
+        return `${origin}/`;
+    }
+
+    async function closeTemporaryTab(tabId) {
+        try {
+            await callTabs('remove', tabId);
+        } catch {
+            // The user may have already closed the temporary tab.
+        } finally {
+            temporaryRetryTabIds.delete(tabId);
+        }
+    }
+
+    function openTemporaryTab(url) {
+        return new Promise((resolve, reject) => {
+            chrome.tabs.create({url, active: false}, tab => {
+                if (chrome.runtime.lastError) {
+                    return reject(new Error(chrome.runtime.lastError.message));
+                }
+                if (!Number.isInteger(tab?.id)) {
+                    return reject(new Error('Could not open a retry tab'));
+                }
+                temporaryRetryTabIds.add(tab.id);
+                resolve(tab);
+            });
+        });
+    }
+
+    async function createTemporaryRetryTab(job, origin) {
+        const tab = await openTemporaryTab(getRetryUrl(job, origin));
+        try {
+            const readyTab = tab.status === 'complete' ? tab : await waitForTabReady(tab.id);
+            if (parseMusicUrl(readyTab?.url)?.origin !== origin) {
+                throw new Error('Temporary retry tab left Yandex Music');
+            }
+            let released = false;
+            return {
+                tabId: tab.id,
+                temporary: true,
+                async release() {
+                    if (released) return;
+                    released = true;
+                    await closeTemporaryTab(tab.id);
+                }
+            };
+        } catch (error) {
+            await closeTemporaryTab(tab.id);
+            throw error;
+        }
+    }
+
+    async function acquireRetryTab(job) {
+        const preferredOrigin = parseMusicUrl(job.sourceOrigin)?.origin || null;
+        const originalTab = await getTabOrNull(job.tabId);
+        const readyOriginal = await getReadyMusicTab(originalTab, preferredOrigin);
+        if (readyOriginal) {
+            return {tabId: readyOriginal.id, temporary: false, release: async () => {}};
+        }
+
+        const tabs = await callTabs('query', {});
+        for (const tab of tabs || []) {
+            const readyTab = await getReadyMusicTab(tab, preferredOrigin);
+            if (readyTab) {
+                return {tabId: readyTab.id, temporary: false, release: async () => {}};
+            }
+        }
+
+        return createTemporaryRetryTab(job, preferredOrigin || DEFAULT_MUSIC_ORIGIN);
+    }
 
     function executeScript(details) {
         return new Promise((resolve, reject) => {
@@ -118,7 +293,7 @@
 
     background.pageBridge = Object.freeze({
         executeScript, injectPageAuth, injectCollectionTools, ensurePageTools,
-        getActiveTab, getCollectionMatch, requireCollectionTab,
-        getStateFromTab
+        getMusicTabOrigin, acquireRetryTab, getActiveTab, getCollectionMatch,
+        requireCollectionTab, getStateFromTab
     });
 })();

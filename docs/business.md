@@ -100,6 +100,12 @@ hours. A fully successful collection has a subdued Hide action. A finished
 collection with failed tracks instead has a prominent Delete action. Both
 actions remove only the history entry and leave downloaded files on disk.
 
+A failed track can be retried after its original tab is closed or navigated
+away. The extension reuses another suitable Yandex Music tab when possible. If
+none exists, it briefly opens the album in an inactive tab and closes that tab
+as soon as the track request is prepared. The Yandex Music authorization must
+still be valid.
+
 ## Configuring the result
 
 There is no settings screen. The extension owner can change settings manually

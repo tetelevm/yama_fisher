@@ -101,10 +101,13 @@
 
     async function runCollectionDownload(tabId, collection) {
         let normalizedCollection = collection;
+        const sourceOrigin = await pageBridge.getMusicTabOrigin(tabId);
         try {
             await pageBridge.ensurePageTools(tabId);
         } catch (error) {
-            const jobId = await state.createDownloadJob(normalizedCollection, tabId);
+            const jobId = await state.createDownloadJob(
+                normalizedCollection, tabId, sourceOrigin
+            );
             state.markQueuedTracksFailed(jobId, error);
             throw error;
         }
@@ -114,7 +117,9 @@
             console.warn('[YaMa Fisher background] Could not preload track titles', error);
         }
         const trackIds = normalizedCollection.entries.map(entry => entry.trackId);
-        const jobId = await state.createDownloadJob(normalizedCollection, tabId);
+        const jobId = await state.createDownloadJob(
+            normalizedCollection, tabId, sourceOrigin
+        );
 
         const coverDataCache = new Map();
         let coverDownloadPromise = null;
@@ -177,10 +182,6 @@
         if (track.status !== downloadStatus.FAILED) {
             throw new Error('Only a failed download can be retried');
         }
-        if (!Number.isInteger(job.tabId)) {
-            throw new Error('Original Yandex Music tab is unavailable');
-        }
-
         state.updateTrackState(jobId, trackId, {
             status: downloadStatus.QUEUED,
             manualPaused: false,
@@ -190,13 +191,20 @@
             totalBytes: null
         });
         let started = false;
+        let retryTab = null;
+        const releaseRetryTab = async () => {
+            const acquiredTab = retryTab;
+            retryTab = null;
+            await acquiredTab?.release();
+        };
         try {
             await state.waitUntilDownloadsResumed();
-            await pageBridge.ensurePageTools(job.tabId);
+            retryTab = await pageBridge.acquireRetryTab(job);
+            await pageBridge.ensurePageTools(retryTab.tabId);
             started = true;
             await withDownloadSlot(jobId, slotLease => (
                 trackPipeline.downloadTrack(
-                    jobId, job.tabId, trackId, new Map(), null, slotLease
+                    jobId, retryTab.tabId, trackId, new Map(), releaseRetryTab, slotLease
                 )
             ));
         } catch (error) {
@@ -207,6 +215,8 @@
                 });
             }
             throw error;
+        } finally {
+            await releaseRetryTab();
         }
     }
 

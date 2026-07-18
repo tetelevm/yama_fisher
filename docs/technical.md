@@ -103,6 +103,8 @@ popup, background, logs, or extension storage.
 
 Other contexts receive only safe request results and authorization state. This
 boundary limits the spread of sensitive data through the extension contexts.
+Retry preserves this boundary: it runs through a suitable Yandex Music page
+instead of copying the token into background state.
 
 ## State storage
 
@@ -116,6 +118,10 @@ Open collection data is removed after seven days, with cleanup running at most
 once per day. Background job history is retained for 24 hours. After a restart,
 the extension reconciles stored downloads with Firefox state and does not mark
 lost unfinished work as successful.
+
+New jobs retain only the safe optional `sourceOrigin` so retry can select the
+same Yandex Music site. Existing jobs without this field remain compatible and
+fall back to `music.yandex.ru` when no suitable open tab exists.
 
 ## Code map
 
@@ -132,7 +138,8 @@ Responsibilities are distributed as follows:
 - `src/background/downloads-adapter.js` isolates the Firefox Downloads API;
 - `src/background/download-state.js` manages jobs, progress, pauses, the
   toolbar badge, and recovery;
-- `src/background/page-bridge.js` manages tabs and MAIN-world injection;
+- `src/background/page-bridge.js` manages tabs, temporary retry pages, and
+  MAIN-world injection;
 - `src/background/track-pipeline.js` processes one track;
 - `src/background/download-scheduler.js` manages the queue, concurrency, and
   retries;
@@ -220,6 +227,12 @@ continues to determine metadata context.
 Every dynamic part of the final path passes through the existing sanitizer. A
 retry does not implement a second download path; it reruns the shared
 single-track pipeline.
+
+Retry first prefers the original tab when it is still on the stored source
+origin, then another ready tab on that origin. If neither exists, the page
+bridge creates an inactive album tab, waits for it to load, and removes only
+that extension-created tab once MAIN-world track preparation finishes or
+fails.
 
 An unfinished in-memory stage cannot resume after a background restart and is
 not marked successful. Only state that can be reconciled with Firefox Downloads
