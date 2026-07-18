@@ -37,7 +37,7 @@
 ## Установка
 
 - скачай последнюю версию проекта по
-  [ссылке](https://github.com/tetelevm/yama_fisher/releases/download/v1.0.0/yama_fisher.zip)
+  [ссылке](https://github.com/tetelevm/yama_fisher/releases/download/v1.2.1/yama_fisher_1_2_1.zip)
 - открой в firefox в новой вкладке `about:debugging#/runtime/this-firefox`
 - в `Load Temporary Add-on…` выбери этот файл-архив
 - перейди на Я.Му на страницу альбома и нажми на иконку расширения (возможно,

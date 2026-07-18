@@ -42,7 +42,7 @@ Screenshots:
 ## Installation
 
 - Download the latest project release from this
-  [link](https://github.com/tetelevm/yama_fisher/releases/download/v1.0.0/yama_fisher.zip).
+  [link](https://github.com/tetelevm/yama_fisher/releases/download/v1.2.1/yama_fisher_1_2_1.zip).
 - Open `about:debugging#/runtime/this-firefox` in a new Firefox tab.
 - Under `Load Temporary Add-on…`, select the downloaded archive.
 - Open an album page on Yandex Music and click the extension icon. It may be
