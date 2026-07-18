@@ -144,12 +144,20 @@ Responsibilities are distributed as follows:
 - `src/background/download-scheduler.js` manages the queue, concurrency, and
   retries;
 - `src/background/background.js` routes messages;
-- `popup/popup.html` contains the static popup shell;
+- `popup/popup.html` contains the static popup shell and template insertion
+  points;
+- `popup/collection-card.html` contains the collection card template;
+- `popup/downloads.html` contains the downloads panel, collection, and track
+  templates;
 - `popup/popup.css` defines popup appearance;
-- `src/popup/popup.js` creates the dynamic UI and sends commands.
+- `src/popup/popup.js` loads and clones popup templates, fills dynamic data,
+  and sends commands.
 
-The background entry point remains a thin router. Dynamic collection and track
-rows are created by the popup JavaScript rather than stored in static HTML.
+The background entry point remains a thin router. Before requesting state, the
+popup loads both packaged HTML template files. It inserts the collection card
+and downloads panel into the shell once, then clones collection and track
+templates for download-state snapshots. Template loading does not require
+network access.
 
 ## Data exchange contract
 

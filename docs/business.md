@@ -31,7 +31,9 @@ and start a download.
 The user opens the desired album page at `/album/<id>`. Before downloading, the
 popup displays the album title, artist, cover, and track list. Playlist, artist,
 and individual-track links are recognized but cannot be downloaded yet. The
-extension reports that these features are not implemented.
+extension reports that these features are not implemented. The collection card
+also provides the primary download action and a secondary link to the project's
+GitHub page.
 
 ### 3. Starting a download
 

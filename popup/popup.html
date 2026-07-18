@@ -8,10 +8,6 @@
 </head>
 <body>
     <main class="popup" aria-live="polite">
-        <div class="popup__links">
-            <a class="github-link" href="https://github.com/tetelevm/yama_fisher/" target="_blank"
-               rel="noreferrer">GitHub</a>
-        </div>
         <section class="screen" id="loading-screen">
             <div class="screen__icon" aria-hidden="true">…</div>
             <h1>Page is loading</h1>
@@ -28,26 +24,7 @@
             <a class="button button--primary" id="authorize-link" href="#">Sign in</a>
         </section>
 
-        <section class="screen" id="collection-screen" hidden>
-            <div class="collection-download">
-                <div class="collection__cover" id="collection-cover" role="img"
-                     aria-label="Collection cover">
-                    <span aria-hidden="true">♫</span>
-                </div>
-                <div class="collection__actions">
-                    <div class="collection__details">
-                        <p class="eyebrow" id="collection-eyebrow">Collection</p>
-                        <h1 id="collection-title">Collection title</h1>
-                        <p class="collection__subtitle" id="collection-subtitle">Subtitle</p>
-                        <p class="collection__meta" id="collection-meta">0 tracks</p>
-                    </div>
-                    <button class="button button--primary button--download"
-                            id="download-collection" type="button">
-                        Download
-                    </button>
-                </div>
-            </div>
-        </section>
+        <div id="collection-card-slot"></div>
 
         <section class="screen" id="error-screen" hidden>
             <div class="screen__title-row">
@@ -59,17 +36,7 @@
                     type="button">Retry</button>
         </section>
 
-        <section class="downloads" id="downloads-panel" hidden aria-label="Download progress">
-            <div class="downloads__header">
-                <strong>Downloads</strong>
-                <div class="downloads__actions">
-                    <span id="downloads-summary"></span>
-                    <button class="download-control" id="downloads-global-control"
-                            type="button" hidden></button>
-                </div>
-            </div>
-            <div class="downloads__list" id="downloads-list"></div>
-        </section>
+        <div id="downloads-slot"></div>
     </main>
     <script src="../src/protocol.js"></script>
     <script src="../src/config.js"></script>

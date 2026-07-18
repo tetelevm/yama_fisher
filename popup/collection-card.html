@@ -1,0 +1,27 @@
+<template id="collection-card-template">
+    <section class="screen" id="collection-screen" hidden>
+        <div class="collection-download">
+            <div class="collection__cover" id="collection-cover" role="img"
+                 aria-label="Collection cover">
+                <span aria-hidden="true">♫</span>
+            </div>
+            <div class="collection__actions">
+                <div class="collection__details">
+                    <p class="eyebrow" id="collection-eyebrow">Collection</p>
+                    <h1 id="collection-title">Collection title</h1>
+                    <p class="collection__subtitle" id="collection-subtitle">Subtitle</p>
+                    <p class="collection__meta" id="collection-meta">0 tracks</p>
+                </div>
+                <div class="collection__buttons">
+                    <button class="button button--primary button--download"
+                            id="download-collection" type="button">
+                        Download
+                    </button>
+                    <a class="button button--secondary button--github"
+                       href="https://github.com/tetelevm/yama_fisher/" target="_blank"
+                       rel="noreferrer">GitHub</a>
+                </div>
+            </div>
+        </div>
+    </section>
+</template>

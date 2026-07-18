@@ -1,0 +1,48 @@
+<!-- Complete downloads area. -->
+<template id="downloads-panel-template">
+    <section class="downloads" id="downloads-panel" hidden aria-label="Download progress">
+        <div class="downloads__header">
+            <strong>Downloads</strong>
+            <div class="downloads__actions">
+                <span id="downloads-summary"></span>
+                <button class="download-control" id="downloads-global-control"
+                        type="button" hidden></button>
+            </div>
+        </div>
+        <div class="downloads__list" id="downloads-list"></div>
+    </section>
+</template>
+
+<!-- One collection in the downloads area. -->
+<template id="download-collection-template">
+    <section class="download-collection">
+        <div class="download-collection__header">
+            <span class="download-collection__status" aria-hidden="true">✓</span>
+            <h2 class="download-collection__title"></h2>
+            <div class="download-collection__actions">
+                <button class="download-control download-collection__pause"
+                        type="button"></button>
+                <button class="download-control download-control--remove
+                               download-collection__remove" type="button">Hide</button>
+            </div>
+        </div>
+        <div class="download-collection__tracks"></div>
+    </section>
+</template>
+
+<!-- One track in a collection. -->
+<template id="download-track-template">
+    <div class="download-item">
+        <div class="download-item__content">
+            <div class="download-item__main">
+                <span class="download-item__status" aria-hidden="true"></span>
+                <span class="download-item__title"></span>
+                <span class="download-item__progress"></span>
+            </div>
+            <div class="download-item__error"></div>
+        </div>
+        <div class="download-item__actions">
+            <button class="download-control" type="button"></button>
+        </div>
+    </div>
+</template>

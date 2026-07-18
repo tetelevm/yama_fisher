@@ -7,6 +7,57 @@ const {
     downloadStatus,
     collectionStateKind
 } = globalThis.YMF_PROTOCOL;
+const TEMPLATE_FILES = ['popup/collection-card.html', 'popup/downloads.html'];
+let templates;
+
+async function loadPopupTemplates() {
+    const templateLists = await Promise.all(TEMPLATE_FILES.map(async path => {
+        const response = await fetch(chrome.runtime.getURL(path));
+        if (!response.ok) throw new Error(`Could not load ${path}: ${response.status}`);
+        const templateDocument = new DOMParser().parseFromString(
+            await response.text(), 'text/html'
+        );
+        return [...templateDocument.querySelectorAll('template')];
+    }));
+    const loadedTemplates = new Map();
+    templateLists.flat().forEach(template => {
+        if (!template.id || loadedTemplates.has(template.id)) {
+            throw new Error(`Invalid or duplicate popup template: ${template.id || '(missing)'}`);
+        }
+        loadedTemplates.set(template.id, template);
+    });
+    return loadedTemplates;
+}
+
+function cloneTemplate(templateId) {
+    const root = templates.get(templateId)?.content.firstElementChild;
+    if (!root) throw new Error(`Popup template is missing: ${templateId}`);
+    return document.importNode(root, true);
+}
+
+function showTemplateLoadError(error) {
+    console.error('[YaMa Fisher popup] Could not load popup templates', error);
+    document.getElementById('loading-screen').hidden = true;
+    document.getElementById('error-screen').hidden = false;
+    document.getElementById('error-title').textContent = 'Could not load the popup';
+    document.getElementById('error-message').textContent =
+        'Reload the extension and open the popup again.';
+    document.getElementById('retry').hidden = true;
+}
+
+try {
+    templates = await loadPopupTemplates();
+    document.getElementById('collection-card-slot').replaceWith(
+        cloneTemplate('collection-card-template')
+    );
+    document.getElementById('downloads-slot').replaceWith(
+        cloneTemplate('downloads-panel-template')
+    );
+} catch (error) {
+    showTemplateLoadError(error);
+    throw error;
+}
+
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [
     element.id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()),
     element
@@ -120,24 +171,16 @@ const TRACK_CONTROLS = {
 };
 
 function createDownloadGroup(job) {
-    const group = document.createElement('section');
-    group.className = 'download-collection';
-    group.innerHTML = `
-        <div class="download-collection__header">
-            <span class="download-collection__status" aria-hidden="true">✓</span>
-            <h2 class="download-collection__title"></h2>
-            <div class="download-collection__actions">
-                <button class="download-control" type="button"></button>
-                <button class="download-control download-control--remove"
-                        type="button">Hide</button></div>
-        </div>
-        <div class="download-collection__tracks"></div>`;
-    const [pauseControl, removeControl] = group.querySelectorAll('button');
+    const group = cloneTemplate('download-collection-template');
+    const pauseControl = group.querySelector('.download-collection__pause');
+    const removeControl = group.querySelector('.download-collection__remove');
     const collectionStatus = group.querySelector('.download-collection__status');
+    const title = group.querySelector('.download-collection__title');
+    const trackList = group.querySelector('.download-collection__tracks');
     const collectionTitle = job.collectionTitle || job.albumTitle
         || `Collection ${job.collectionId || job.albumId || 'untitled'}`;
     const collectionSubtitle = job.collectionSubtitle || job.albumArtist || '';
-    group.querySelector('h2').textContent = collectionSubtitle
+    title.textContent = collectionSubtitle
         ? `${collectionTitle} - ${collectionSubtitle}`
         : collectionTitle;
     const tracks = job.tracks || [];
@@ -170,24 +213,16 @@ function createDownloadGroup(job) {
         {action: protocolActions.REMOVE_COMPLETED_JOB, jobId: job.id},
         removeControl
     );
-    group.lastElementChild.replaceChildren(...tracks.map(track => createDownloadRow(job, track)));
+    trackList.replaceChildren(...tracks.map(track => createDownloadRow(job, track)));
     return group;
 }
 
 function createDownloadRow(job, track) {
-    const row = document.createElement('div');
-    row.innerHTML = `
-        <div class="download-item__content">
-            <div class="download-item__main">
-                <span class="download-item__status" aria-hidden="true"></span>
-                <span class="download-item__title"></span>
-                <span class="download-item__progress"></span></div>
-            <div class="download-item__error"></div></div>
-        <div class="download-item__actions">
-            <button class="download-control" type="button"></button></div>`;
+    const row = cloneTemplate('download-track-template');
     const control = row.querySelector('button');
-    const [main, error] = row.firstElementChild.children;
-    const [, title, progress] = main.children;
+    const title = row.querySelector('.download-item__title');
+    const progress = row.querySelector('.download-item__progress');
+    const error = row.querySelector('.download-item__error');
     row.className = `download-item download-item--${track.status}`;
     title.textContent = `${track.position}. ${track.title}`;
     progress.textContent = getTrackProgress(track);
