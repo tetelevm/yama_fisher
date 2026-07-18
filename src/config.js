@@ -11,7 +11,7 @@ globalThis.YMF_CONFIG = Object.freeze({
     // Quality requested from Yandex Music: lq, nq, or lossless.
     audioQuality: 'lossless',
 
-    // Number of tracks to download at once.
+    // Number of tracks to download at once across all collections and retries.
     downloadCount: 4,
 
     // Track directory template based on its album metadata.

@@ -1,5 +1,5 @@
 /**
- * Collection concurrency and retry orchestration around the single-track pipeline.
+ * Global concurrency, collection queues, and retries around the single-track pipeline.
  */
 (() => {
     const background = globalThis.YMF_BACKGROUND ||= {};
@@ -9,6 +9,42 @@
     const config = globalThis.YMF_CONFIG;
     const {downloadStatus} = globalThis.YMF_PROTOCOL;
     const pendingCollections = new Set();
+    const downloadLimit = Math.max(1, Math.min(Number(config.downloadCount) || 1, 8));
+    const slotWaiters = [];
+    let activeSlots = 0;
+
+    function acquireDownloadSlot() {
+        if (activeSlots < downloadLimit) {
+            activeSlots += 1;
+            return Promise.resolve();
+        }
+        return new Promise(resolve => slotWaiters.push(resolve));
+    }
+
+    function releaseDownloadSlot() {
+        const resume = slotWaiters.shift();
+        if (resume) {
+            resume();
+            return;
+        }
+        activeSlots = Math.max(0, activeSlots - 1);
+    }
+
+    async function withDownloadSlot(jobId, callback) {
+        while (true) {
+            await state.waitUntilDownloadsResumed();
+            await state.waitWhileJobPaused(jobId);
+            await acquireDownloadSlot();
+            // A job can be paused while queued, so it must not keep the claimed global slot.
+            if (!state.isJobSchedulingPaused(jobId)) break;
+            releaseDownloadSlot();
+        }
+        try {
+            return await callback();
+        } finally {
+            releaseDownloadSlot();
+        }
+    }
 
     async function preloadTrackTitles(tabId, collection) {
         const titles = collection.metadata?.trackTitles || {};
@@ -55,7 +91,6 @@
         const trackIds = normalizedCollection.entries.map(entry => entry.trackId);
         const jobId = await state.createDownloadJob(normalizedCollection, tabId);
 
-        const concurrency = Math.max(1, Math.min(Number(config.downloadCount) || 1, 8));
         const coverDataCache = new Map();
         let coverDownloadPromise = null;
         let failedTracks = 0;
@@ -73,18 +108,17 @@
             while (true) {
                 const index = nextTrackIndex++;
                 if (index >= trackIds.length) return;
-                await state.waitUntilDownloadsResumed();
                 try {
-                    await trackPipeline.downloadTrack(
+                    await withDownloadSlot(jobId, () => trackPipeline.downloadTrack(
                         jobId, tabId, trackIds[index], coverDataCache, saveCoverOnce
-                    );
+                    ));
                 } catch {
                     failedTracks += 1;
                 }
             }
         };
         await Promise.all(Array.from(
-            {length: Math.min(concurrency, trackIds.length)},
+            {length: Math.min(downloadLimit, trackIds.length)},
             downloadNext
         ));
         await coverDownloadPromise;
@@ -143,7 +177,9 @@
             await state.waitUntilDownloadsResumed();
             await pageBridge.ensurePageTools(job.tabId);
             started = true;
-            await trackPipeline.downloadTrack(jobId, job.tabId, trackId, new Map());
+            await withDownloadSlot(jobId, () => (
+                trackPipeline.downloadTrack(jobId, job.tabId, trackId, new Map())
+            ));
         } catch (error) {
             if (!started) {
                 state.updateTrackState(jobId, trackId, {

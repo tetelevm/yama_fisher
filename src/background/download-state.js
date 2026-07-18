@@ -132,6 +132,11 @@
         );
     }
 
+    function isJobSchedulingPaused(jobId) {
+        const job = downloadState.jobs.find(item => item.id === jobId);
+        return Boolean(downloadState.isPaused || job?.isPaused);
+    }
+
     function createTrackController(jobId, trackId) {
         const {job, track} = findTrack(jobId, trackId);
         if (!job || !track) return {job, track, controller: null};
@@ -503,7 +508,7 @@
     background.downloadState = Object.freeze({
         ready, findTrack, hasActiveCollectionJob, createTrackController,
         releaseTrackController, getProcessingStatus, waitWhilePaused,
-        waitUntilDownloadsResumed, waitWhileJobPaused,
+        waitUntilDownloadsResumed, waitWhileJobPaused, isJobSchedulingPaused,
         updateTrackState, updateTrackProgress, createDownloadJob, markQueuedTracksFailed,
         readDownloadProgress, controlDownload, setDownloadsPaused, setCollectionDownloadsPaused,
         removeCompletedTrack, removeCompletedJob,

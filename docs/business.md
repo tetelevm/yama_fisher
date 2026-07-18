@@ -40,6 +40,7 @@ downloading in parallel. As soon as one track finishes, the next one uses the
 freed slot, so a slow file does not hold up the entire queue. Track titles are
 visible as soon as the queue appears. The download button is disabled after the
 first click, and an album that is already downloading cannot be queued again.
+The parallel download limit is shared by all active albums and retried tracks.
 
 ### 4. Monitoring and control
 

@@ -52,7 +52,8 @@ failed states. One track's failure does not stop the collection.
 
 The background stores download jobs and starts a limited number of tracks at
 the same time. A free queue slot is filled as soon as any track finishes,
-without waiting for the other tracks that started alongside it.
+without waiting for the other tracks that started alongside it. The limit is
+global: all active collections and manual retries share the same slots.
 
 Collection startup is deduplicated by collection type and ID. An in-memory
 reservation closes the race before a job is persisted, while active persisted
