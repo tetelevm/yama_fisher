@@ -64,13 +64,24 @@ Track processing obtains audio and metadata, adds ID3 data and cover art,
 builds a safe path, and hands the completed file to Firefox Downloads. The
 collection cover is also saved as a separate file.
 
-Pause state exists at three levels: all jobs, one collection, and one track.
-These causes are tracked independently so resuming a narrower scope does not
-start work that remains paused at another scope. An in-memory track pipeline
-leases a global concurrency slot only while it can make progress. Pausing the
-track releases that lease without discarding its buffered data, so another
-queued track can run. Resumed pipelines receive the next available slot before
-tracks that have not started yet.
+Pause state exists internally at three levels: all jobs, one collection, and
+one track. The popup exposes only track controls. During background recovery,
+stored global and collection pauses from older versions are converted into
+individual track pauses, so every paused Firefox download still has an
+available Resume action. An in-memory track pipeline leases a global
+concurrency slot only while it can make progress. Pausing the track releases
+that lease without discarding its buffered data, so another queued track can
+run. Resumed pipelines receive the next available slot before tracks that have
+not started yet.
+
+Worker stop is independent from pause state. The persisted `workersStopped`
+flag prevents the scheduler from granting new leases. Active controllers stop
+at the existing cooperative processing checkpoints, release their leases, and
+retain already buffered audio. Their track status remains downloading and
+Firefox Downloads is not paused. The transient per-track `workerStopped` flag
+identifies only controllers held by this gate and is cleared when a controller
+finishes or background state is reconciled. Resuming the workers lets held
+controllers compete for slots with resume priority.
 
 The toolbar badge is derived from background download state. It counts queued,
 downloading, and paused tracks across every job, while completed and failed
@@ -136,13 +147,13 @@ Responsibilities are distributed as follows:
 - `src/page/collection.js` manages the shared collection lifecycle;
 - `src/page/download.js` performs authorized track-data and file requests;
 - `src/background/downloads-adapter.js` isolates the Firefox Downloads API;
-- `src/background/download-state.js` manages jobs, progress, pauses, the
-  toolbar badge, and recovery;
+- `src/background/download-state.js` manages jobs, progress, pauses, worker
+  stop state, the toolbar badge, and recovery;
 - `src/background/page-bridge.js` manages tabs, temporary retry pages, and
   MAIN-world injection;
 - `src/background/track-pipeline.js` processes one track;
-- `src/background/download-scheduler.js` manages the queue, concurrency, and
-  retries;
+- `src/background/download-scheduler.js` manages the queue, concurrency,
+  worker gating, and retries;
 - `src/background/background.js` routes messages;
 - `popup/popup.html` contains the static popup shell and template insertion
   points;
@@ -159,12 +170,36 @@ and downloads panel into the shell once, then clones collection and track
 templates for download-state snapshots. Template loading does not require
 network access.
 
+Every user-facing value replaced at runtime has a representative valid example
+in its HTML template; only containers that receive cloned children may be
+empty. The track template owns separate Pause, Resume, and Retry controls. The
+renderer keeps their labels and styles static and changes only visibility and
+command binding for the current track state. Failed tracks use the existing
+progress label and do not render a second error row.
+
+The collection template owns separate Hide and Retry controls. Hide is visible
+only when every track completed successfully. Retry is visible only when every
+track is finished and at least one failed; there is no collection Pause,
+Resume, or Delete control.
+
+The downloads panel has only one history control, Hide all. It is visible only
+when every stored collection independently qualifies for its Hide action. The
+panel does not provide Pause all or Resume all controls.
+
+The panel header also owns the square worker-stop toggle. Its pressed state
+comes from `workersStopped`. The track template owns a separate disabled
+Stopped control, shown instead of Pause only while that downloading track has
+an active controller held by the worker gate.
+
 ## Data exchange contract
 
 `src/protocol.js` is the only source of strings shared between contexts. A
 command change requires coordinated changes to its sender, router, and
 receiver. Stored-state formats retain backward compatibility or receive an
 explicit migration.
+
+`SET_WORKERS_STOPPED` changes only scheduler and controller gating. It does not
+write the paused status or call the Firefox pause API.
 
 A normalized collection has these fields:
 
@@ -235,6 +270,11 @@ continues to determine metadata context.
 Every dynamic part of the final path passes through the existing sanitizer. A
 retry does not implement a second download path; it reruns the shared
 single-track pipeline.
+
+Collection retry validates that the job is finished, snapshots all failed
+tracks, and runs them through the same global slots as individual retries. The
+tracks share one page context until their authorized preparation finishes, so
+retrying a collection does not open one temporary tab per failed track.
 
 Retry first prefers the original tab when it is still on the stored source
 origin, then another ready tab on that origin. If neither exists, the page

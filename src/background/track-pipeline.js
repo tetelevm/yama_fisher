@@ -63,7 +63,7 @@
         const chunks = [];
         let received = 0;
         while (true) {
-            await state.waitWhilePaused(controller);
+            await state.waitWhileBlocked(controller);
             const {done, value} = await reader.read();
             if (done) break;
             chunks.push(value);
@@ -102,17 +102,17 @@
     }
 
     async function createTaggedAudio(data, onProgress, controller, coverDataCache, albumId) {
-        await state.waitWhilePaused(controller);
+        await state.waitWhileBlocked(controller);
         const audioResponse = await fetch(data.download);
         if (!audioResponse.ok) throw new Error(`Could not download audio: ${audioResponse.status}`);
         const audioData = await readAudioData(audioResponse, onProgress, controller);
 
         const track = data.trackinfo;
         const album = getAlbum(track, albumId);
-        await state.waitWhilePaused(controller);
+        await state.waitWhileBlocked(controller);
         const coverData = await getCoverData(track, coverDataCache, albumId);
 
-        await state.waitWhilePaused(controller);
+        await state.waitWhileBlocked(controller);
         const writer = new ID3Writer(audioData);
         writer.setFrame('TIT2', track.title)
             .setFrame('TPE1', [getArtists(track, '')])
@@ -150,9 +150,10 @@
         try {
             state.updateTrackState(jobId, trackId, {
                 status: state.getProcessingStatus(job, track, controller),
+                workerStopped: controller.workerStopped,
                 error: null
             });
-            await state.waitWhilePaused(controller);
+            await state.waitWhileBlocked(controller);
             waitingNotice = setTimeout(() => console.warn(
                 '[YaMa Fisher background] MAIN world is still preparing the track after 15 seconds',
                 {trackId}

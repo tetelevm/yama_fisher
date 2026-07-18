@@ -221,6 +221,55 @@ body {
     color: #f5f5f5;
 }
 
+.downloads__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.downloads__workers-toggle {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    box-sizing: border-box;
+    place-items: center;
+    border: 1px solid #55585c;
+    border-radius: 3px;
+    background: #343639;
+    cursor: pointer;
+    padding: 0;
+}
+
+.downloads__workers-toggle::before {
+    width: 8px;
+    height: 8px;
+    background: #aaaeb2;
+    content: '';
+}
+
+.downloads__workers-toggle:hover:not(:disabled) {
+    background: #424549;
+}
+
+.downloads__workers-toggle:disabled {
+    cursor: default;
+    opacity: .55;
+}
+
+.downloads__workers-toggle--stopped {
+    border-color: #55a96f;
+    background: #b8babd;
+    box-shadow: 0 0 0 1px rgba(85, 169, 111, .45);
+}
+
+.downloads__workers-toggle--stopped::before {
+    background: #45484b;
+}
+
+.downloads__workers-toggle--stopped:hover:not(:disabled) {
+    background: #c7c9cc;
+}
+
 .downloads__actions {
     display: flex;
     align-items: center;
@@ -253,12 +302,6 @@ body {
     --control-hover: #c7c9cc;
 }
 
-.download-control--delete {
-    --control-bg: #b84343;
-    --control-color: #fff;
-    --control-hover: #d05050;
-}
-
 .download-control--retry {
     --control-bg: #6b4c30;
     --control-color: #efd2ad;
@@ -275,6 +318,15 @@ body {
     --control-bg: #2f704b;
     --control-color: #e0f7e8;
     --control-hover: #39875a;
+}
+
+.download-control--stopped {
+    --control-bg: #3a3a3a;
+    --control-color: #bfc2c5;
+}
+
+.download-control--stopped:disabled {
+    opacity: 1;
 }
 
 .downloads__list {
@@ -401,16 +453,9 @@ body {
     white-space: nowrap;
 }
 
-.download-item__error {
-    margin-top: 2px;
-    color: #ff8e8e;
-    font-size: 10px;
-}
-
 .collection__details h1,
 .collection__subtitle,
-.download-item__title,
-.download-item__error {
+.download-item__title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

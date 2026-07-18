@@ -6,6 +6,9 @@
     const {downloadState, pageBridge, downloadScheduler} = globalThis.YMF_BACKGROUND;
     const stateRequests = new Set([actions.GET_AUTH_STATE, actions.GET_COLLECTION_STATE]);
     const commands = {
+        [actions.SET_WORKERS_STOPPED]: message => (
+            downloadState.setWorkersStopped(Boolean(message.stopped))
+        ),
         [actions.SET_DOWNLOADS_PAUSED]: message => (
             downloadState.setDownloadsPaused(Boolean(message.paused))
         ),
@@ -20,6 +23,9 @@
         ),
         [actions.RETRY_DOWNLOAD]: message => (
             downloadScheduler.retryTrack(message.jobId, message.trackId)
+        ),
+        [actions.RETRY_FAILED_COLLECTION_DOWNLOADS]: message => (
+            downloadScheduler.retryFailedTracks(message.jobId)
         ),
         [actions.REMOVE_COMPLETED_TRACK]: message => (
             downloadState.removeCompletedTrack(message.jobId, message.trackId)

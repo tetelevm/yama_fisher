@@ -54,12 +54,25 @@ Each track displays progress and a status:
 - a red dot means failed;
 - a green dot means completed.
 
-The user can pause all downloads, one album, or one track. A paused track keeps
-its current progress but releases its active download slot, allowing the next
+Failure is shown once in the track's status and progress area. The popup does
+not add a second error line that changes the track row height.
+
+The popup offers Pause and Resume only for individual tracks. It does not
+provide global or collection-level pause controls. A paused track keeps its
+current progress but releases its active download slot, allowing the next
 queued track to start. Resuming that track continues it when a slot becomes
-available. Resuming one album after a global pause must not resume the other
-albums. Failed tracks can be retried, and their failures do not prevent later
-tracks from starting.
+available. Failed tracks can be retried, and their failures do not prevent
+later tracks from starting.
+
+A square stop button appears before Downloads. It is dark gray while workers
+are running and becomes light gray with a green outline while they are stopped.
+Stopping workers does not put tracks into the paused state. Active workers keep
+their downloaded data, release their slots at the next processing checkpoint,
+and resume from the same data when the button is toggled off. No queued worker
+starts while the stop is active. A downloading track held by this control keeps
+its downloading status and shows a disabled Stopped control; other tracks do
+not change.
+
 The toolbar badge shows the total number of queued, downloading, and paused
 tracks across all albums. Completed and failed tracks are not counted.
 
@@ -98,9 +111,12 @@ title. A completed album can be hidden from history.
 Recent download state remains available after the popup closes. The user can
 view progress, errors, and results, retry failed tracks, or hide completed
 entries. History is intended for current downloads and is retained for 24
-hours. A fully successful collection has a subdued Hide action. A finished
-collection with failed tracks instead has a prominent Delete action. Both
-actions remove only the history entry and leave downloaded files on disk.
+hours. Only a fully successful collection has a Hide action, which removes the
+history entry and leaves downloaded files on disk. A finished collection with
+failed tracks instead has Retry. It restarts every failed track in that
+collection. Failed collections do not have a Delete action. Hide all is the
+only panel-level history action and appears only when every collection has its
+own Hide action available.
 
 A failed track can be retried after its original tab is closed or navigated
 away. The extension reuses another suitable Yandex Music tab when possible. If

@@ -2,11 +2,17 @@
 <template id="downloads-panel-template">
     <section class="downloads" id="downloads-panel" hidden aria-label="Download progress">
         <div class="downloads__header">
-            <strong>Downloads</strong>
+            <div class="downloads__title">
+                <button class="downloads__workers-toggle" id="downloads-workers-toggle"
+                        type="button" title="Stop workers" aria-label="Stop workers"
+                        aria-pressed="false"></button>
+                <strong>Downloads</strong>
+            </div>
             <div class="downloads__actions">
-                <span id="downloads-summary"></span>
-                <button class="download-control" id="downloads-global-control"
-                        type="button" hidden></button>
+                <span id="downloads-summary">0 of 0</span>
+                <button class="download-control download-control--remove"
+                        id="downloads-hide-all" type="button" hidden
+                        title="Hide all completed entries from history">Hide all</button>
             </div>
         </div>
         <div class="downloads__list" id="downloads-list"></div>
@@ -18,12 +24,14 @@
     <section class="download-collection">
         <div class="download-collection__header">
             <span class="download-collection__status" aria-hidden="true">✓</span>
-            <h2 class="download-collection__title"></h2>
+            <h2 class="download-collection__title">COLLECTION NAME - COLLECTION AUTHOR</h2>
             <div class="download-collection__actions">
-                <button class="download-control download-collection__pause"
-                        type="button"></button>
                 <button class="download-control download-control--remove
-                               download-collection__remove" type="button">Hide</button>
+                               download-collection__hide" type="button"
+                        title="Hide this completed entry from history">Hide</button>
+                <button class="download-control download-control--retry
+                               download-collection__retry" type="button" hidden
+                        title="Retry all failed tracks">Retry</button>
             </div>
         </div>
         <div class="download-collection__tracks"></div>
@@ -32,17 +40,21 @@
 
 <!-- One track in a collection. -->
 <template id="download-track-template">
-    <div class="download-item">
-        <div class="download-item__content">
-            <div class="download-item__main">
-                <span class="download-item__status" aria-hidden="true"></span>
-                <span class="download-item__title"></span>
-                <span class="download-item__progress"></span>
-            </div>
-            <div class="download-item__error"></div>
+    <div class="download-item download-item--downloading">
+        <div class="download-item__main">
+            <span class="download-item__status" aria-hidden="true"></span>
+            <span class="download-item__title">00. TRACK NAME</span>
+            <span class="download-item__progress">0.0 / 0.0 MB</span>
         </div>
         <div class="download-item__actions">
-            <button class="download-control" type="button"></button>
+            <button class="download-control download-control--pause download-item__pause"
+                    type="button">Pause</button>
+            <button class="download-control download-control--stopped
+                           download-item__stopped" type="button" disabled hidden>Stopped</button>
+            <button class="download-control download-control--resume download-item__resume"
+                    type="button" hidden>Resume</button>
+            <button class="download-control download-control--retry download-item__retry"
+                    type="button" hidden>Retry</button>
         </div>
     </div>
 </template>

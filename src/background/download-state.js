@@ -1,5 +1,5 @@
 /**
- * Persistent download state, queue badge, Firefox reconciliation, and pause controls.
+ * Persistent download state, queue badge, Firefox reconciliation, and download controls.
  */
 (() => {
     const background = globalThis.YMF_BACKGROUND ||= {};
@@ -13,7 +13,7 @@
         downloadStatus.QUEUED, downloadStatus.DOWNLOADING, downloadStatus.PAUSED
     ]);
     const FINISHED_STATUSES = new Set([downloadStatus.COMPLETED, downloadStatus.FAILED]);
-    let downloadState = {jobs: [], isPaused: false};
+    let downloadState = {jobs: [], isPaused: false, workersStopped: false};
     let persistQueue = Promise.resolve();
     let progressPersistTimer = null;
     let badgeText = null;
@@ -28,6 +28,7 @@
             downloadState = result[DOWNLOAD_STATE_KEY];
         }
         downloadState.isPaused = Boolean(downloadState.isPaused);
+        downloadState.workersStopped = Boolean(downloadState.workersStopped);
         await reconcileDownloadState();
         pruneExpiredJobs();
         await persistDownloadState();
@@ -71,8 +72,18 @@
         downloadState.jobs = downloadState.jobs.filter(job => job.createdAt >= oldestAllowedTime);
     }
 
+    function findJob(jobId) {
+        return downloadState.jobs.find(item => item.id === jobId);
+    }
+
+    function canHideCollection(job) {
+        const tracks = job?.tracks || [];
+        return tracks.length > 0
+            && tracks.every(track => track.status === downloadStatus.COMPLETED);
+    }
+
     function findTrack(jobId, trackId) {
-        const job = downloadState.jobs.find(item => item.id === jobId);
+        const job = findJob(jobId);
         const track = job?.tracks.find(item => item.id === String(trackId));
         return {job, track};
     }
@@ -101,6 +112,10 @@
         );
     }
 
+    function isControllerBlocked(controller) {
+        return Boolean(controller?.workerStopped || isControllerPaused(controller));
+    }
+
     function isTrackPaused(job, track, controller) {
         if (controller) return isControllerPaused(controller);
         return Boolean(track?.manualPaused || downloadState.isPaused || job?.isPaused);
@@ -108,22 +123,23 @@
 
     function getProcessingStatus(job, track, controller) {
         if (isTrackPaused(job, track, controller)) return downloadStatus.PAUSED;
+        if (controller?.workerStopped) return downloadStatus.DOWNLOADING;
         return controller?.waitingForSlot
             ? downloadStatus.QUEUED
             : downloadStatus.DOWNLOADING;
     }
 
     function resumeControllerIfReady(controller) {
-        if (isControllerPaused(controller)) return;
+        if (isControllerBlocked(controller)) return;
         const resume = controller.resume;
         controller.resume = null;
         resume?.();
     }
 
-    async function waitWhilePaused(controller) {
-        if (!isControllerPaused(controller)) return;
+    async function waitWhileBlocked(controller) {
+        if (!isControllerBlocked(controller)) return;
         if (!controller.slotLease) {
-            while (isControllerPaused(controller)) {
+            while (isControllerBlocked(controller)) {
                 await new Promise(resolve => { controller.resume = resolve; });
             }
             return;
@@ -132,14 +148,11 @@
         controller.waitingForSlot = true;
         controller.slotLease.release();
         while (true) {
-            while (isControllerPaused(controller)) {
+            while (isControllerBlocked(controller)) {
                 await new Promise(resolve => { controller.resume = resolve; });
             }
-            updateTrackState(controller.jobId, controller.trackId, {
-                status: downloadStatus.QUEUED
-            });
             await controller.slotLease.reacquire();
-            if (!isControllerPaused(controller)) break;
+            if (!isControllerBlocked(controller)) break;
             controller.slotLease.release();
         }
         controller.waitingForSlot = false;
@@ -166,6 +179,10 @@
         return waitForResume('all', () => downloadState.isPaused);
     }
 
+    function waitUntilWorkersStarted() {
+        return waitForResume('workers', () => downloadState.workersStopped);
+    }
+
     function waitWhileJobPaused(jobId) {
         return waitForResume(
             jobId,
@@ -178,6 +195,10 @@
         return Boolean(downloadState.isPaused || job?.isPaused);
     }
 
+    function isDownloadSchedulingBlocked(jobId) {
+        return downloadState.workersStopped || isJobSchedulingPaused(jobId);
+    }
+
     function createTrackController(jobId, trackId, slotLease) {
         const {job, track} = findTrack(jobId, trackId);
         if (!job || !track) return {job, track, controller: null};
@@ -187,6 +208,7 @@
             manualPaused: Boolean(track.manualPaused),
             globalPaused: Boolean(downloadState.isPaused),
             collectionPaused: Boolean(job.isPaused),
+            workerStopped: Boolean(downloadState.workersStopped),
             waitingForSlot: false,
             slotLease,
             resume: null
@@ -197,6 +219,7 @@
 
     function releaseTrackController(jobId, trackId) {
         activeTrackControllers.delete(getTrackKey(jobId, trackId));
+        updateTrackState(jobId, trackId, {workerStopped: false});
     }
 
     function updateTrackState(jobId, trackId, changes) {
@@ -232,6 +255,7 @@
                 title: trackTitles[String(entry.trackId)] || `Track ${index + 1}`,
                 status: downloadStatus.QUEUED,
                 manualPaused: false,
+                workerStopped: false,
                 bytesReceived: 0,
                 totalBytes: null
             }))
@@ -260,7 +284,12 @@
     }
 
     function failedChanges(error) {
-        return {status: downloadStatus.FAILED, manualPaused: false, error};
+        return {
+            status: downloadStatus.FAILED,
+            manualPaused: false,
+            workerStopped: false,
+            error
+        };
     }
 
     function failTrack(track, error) {
@@ -296,6 +325,7 @@
         if (firefoxState === 'complete') {
             changes.status = downloadStatus.COMPLETED;
             changes.manualPaused = false;
+            changes.workerStopped = false;
             changes.error = null;
             changes.completedAt = Date.now();
             if (changes.totalBytes !== undefined) changes.bytesReceived = changes.totalBytes;
@@ -328,12 +358,13 @@
     }
 
     async function reconcileDownloadState() {
-        let hasActiveFirefoxDownloads = false;
+        // Group pause controls are gone; preserve their paused downloads as track pauses.
+        downloadState.isPaused = false;
         for (const job of downloadState.jobs) {
-            job.isPaused = Boolean(job.isPaused || downloadState.isPaused);
-            let jobHasActiveDownloads = false;
+            job.isPaused = false;
             for (const track of job.tracks || []) {
                 track.manualPaused = Boolean(track.manualPaused);
+                track.workerStopped = false;
                 if (FINISHED_STATUSES.has(track.status)) {
                     track.manualPaused = false;
                     continue;
@@ -359,7 +390,8 @@
                     updatedAt: Date.now()
                 });
                 const terminalChanges = item.state === 'complete'
-                    ? {status: downloadStatus.COMPLETED, manualPaused: false, error: null,
+                    ? {status: downloadStatus.COMPLETED, manualPaused: false,
+                        workerStopped: false, error: null,
                         completedAt: track.completedAt || Date.now()}
                     : item.state === 'interrupted'
                         ? failedChanges(item.error || 'Download interrupted')
@@ -369,31 +401,17 @@
                     continue;
                 }
 
-                jobHasActiveDownloads = true;
-                hasActiveFirefoxDownloads = true;
                 track.error = null;
                 if (item.paused) {
-                    if (!downloadState.isPaused && !job.isPaused) track.manualPaused = true;
+                    track.manualPaused = true;
                     track.status = downloadStatus.PAUSED;
                     continue;
                 }
 
                 track.manualPaused = false;
                 track.status = downloadStatus.DOWNLOADING;
-                if (downloadState.isPaused || job.isPaused) {
-                    try {
-                        await downloadsAdapter.control(track.downloadId, 'pause');
-                        track.status = downloadStatus.PAUSED;
-                    } catch (error) {
-                        warnFirefoxDownload(
-                            'restore persisted pause state for', track.downloadId, error
-                        );
-                    }
-                }
             }
-            if (!jobHasActiveDownloads) job.isPaused = false;
         }
-        if (!hasActiveFirefoxDownloads) downloadState.isPaused = false;
     }
 
     function changeFirefoxDownloadState(job, track, paused) {
@@ -474,6 +492,21 @@
         return operations;
     }
 
+    async function setWorkersStopped(stopped) {
+        await ready;
+        downloadState.workersStopped = stopped;
+        activeTrackControllers.forEach(controller => {
+            controller.workerStopped = stopped;
+            const {track} = findTrack(controller.jobId, controller.trackId);
+            if (track) {
+                Object.assign(track, {workerStopped: stopped, updatedAt: Date.now()});
+            }
+            resumeControllerIfReady(controller);
+        });
+        if (!stopped) resume('workers');
+        await persistDownloadState();
+    }
+
     async function setDownloadsPaused(paused) {
         await ready;
         downloadState.isPaused = paused;
@@ -526,10 +559,10 @@
 
     async function removeCompletedJob(jobId) {
         await ready;
-        const job = downloadState.jobs.find(item => item.id === jobId);
+        const job = findJob(jobId);
         if (!job) throw new Error('Collection is no longer stored in extension history');
-        if (!job.tracks.length || !job.tracks.every(track => FINISHED_STATUSES.has(track.status))) {
-            throw new Error('Only a completed collection can be hidden');
+        if (!canHideCollection(job)) {
+            throw new Error('Only a successfully downloaded collection can be hidden');
         }
         downloadState.jobs = downloadState.jobs.filter(item => item.id !== jobId);
         await persistDownloadState();
@@ -537,9 +570,8 @@
 
     async function clearCompletedDownloadHistory() {
         await ready;
-        const tracks = downloadState.jobs.flatMap(job => job.tracks);
-        if (!tracks.length || !tracks.every(track => track.status === downloadStatus.COMPLETED)) {
-            throw new Error('History can be hidden only after all downloads are complete');
+        if (!downloadState.jobs.length || !downloadState.jobs.every(canHideCollection)) {
+            throw new Error('History can be hidden only when every collection can be hidden');
         }
         downloadState.jobs = [];
         await persistDownloadState();
@@ -552,11 +584,13 @@
     });
 
     background.downloadState = Object.freeze({
-        ready, findTrack, hasActiveCollectionJob, createTrackController,
-        releaseTrackController, getProcessingStatus, waitWhilePaused,
-        waitUntilDownloadsResumed, waitWhileJobPaused, isJobSchedulingPaused,
+        ready, findJob, findTrack, hasActiveCollectionJob, createTrackController,
+        releaseTrackController, getProcessingStatus, waitWhileBlocked,
+        waitUntilWorkersStarted, waitUntilDownloadsResumed, waitWhileJobPaused,
+        isDownloadSchedulingBlocked,
         updateTrackState, updateTrackProgress, createDownloadJob, markQueuedTracksFailed,
-        readDownloadProgress, controlDownload, setDownloadsPaused, setCollectionDownloadsPaused,
+        readDownloadProgress, controlDownload, setWorkersStopped, setDownloadsPaused,
+        setCollectionDownloadsPaused,
         removeCompletedTrack, removeCompletedJob,
         clearCompletedDownloadHistory
     });

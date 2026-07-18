@@ -68,9 +68,6 @@ const screens = Object.fromEntries(
     ])
 );
 const DOWNLOAD_STATE_KEY = storageKeys.DOWNLOAD_STATE;
-const CONTROLLABLE_STATUSES = new Set([
-    downloadStatus.QUEUED, downloadStatus.DOWNLOADING, downloadStatus.PAUSED
-]);
 const FINISHED_STATUSES = new Set([downloadStatus.COMPLETED, downloadStatus.FAILED]);
 let loadingRetryTimer = null;
 
@@ -160,20 +157,16 @@ function requestControl(message, button) {
     });
 }
 
-const TRACK_CONTROLS = {
-    [downloadStatus.DOWNLOADING]: [
-        protocolActions.PAUSE_DOWNLOAD, 'Pause', 'download-control--pause'
-    ],
-    [downloadStatus.PAUSED]: [
-        protocolActions.RESUME_DOWNLOAD, 'Resume', 'download-control--resume'
-    ],
-    [downloadStatus.FAILED]: [protocolActions.RETRY_DOWNLOAD, 'Retry', 'download-control--retry']
-};
+function canHideCollection(job) {
+    const tracks = job.tracks || [];
+    return tracks.length > 0
+        && tracks.every(track => track.status === downloadStatus.COMPLETED);
+}
 
 function createDownloadGroup(job) {
     const group = cloneTemplate('download-collection-template');
-    const pauseControl = group.querySelector('.download-collection__pause');
-    const removeControl = group.querySelector('.download-collection__remove');
+    const hideControl = group.querySelector('.download-collection__hide');
+    const retryControl = group.querySelector('.download-collection__retry');
     const collectionStatus = group.querySelector('.download-collection__status');
     const title = group.querySelector('.download-collection__title');
     const trackList = group.querySelector('.download-collection__tracks');
@@ -184,34 +177,20 @@ function createDownloadGroup(job) {
         ? `${collectionTitle} - ${collectionSubtitle}`
         : collectionTitle;
     const tracks = job.tracks || [];
-    const hasControllableTracks = tracks.some(track => CONTROLLABLE_STATUSES.has(track.status));
+    const allTracksCompleted = canHideCollection(job);
     const allTracksFinished = tracks.length > 0
         && tracks.every(track => FINISHED_STATUSES.has(track.status));
     const hasFailedTracks = tracks.some(track => track.status === downloadStatus.FAILED);
-    collectionStatus.hidden = !tracks.length
-        || !tracks.every(track => track.status === downloadStatus.COMPLETED);
-    const shouldShowPauseControl = hasControllableTracks || job.isPaused;
-    pauseControl.hidden = !shouldShowPauseControl;
-    pauseControl.textContent = job.isPaused ? 'Resume' : 'Pause';
-    pauseControl.className = `download-control download-control--${
-        job.isPaused ? 'resume' : 'pause'
-    }`;
-    pauseControl.onclick = () => requestControl({
-        action: protocolActions.SET_COLLECTION_DOWNLOADS_PAUSED,
-        jobId: job.id,
-        paused: !job.isPaused
-    }, pauseControl);
-    removeControl.hidden = shouldShowPauseControl || !allTracksFinished;
-    removeControl.textContent = hasFailedTracks ? 'Delete' : 'Hide';
-    removeControl.className = `download-control download-control--${
-        hasFailedTracks ? 'delete' : 'remove'
-    }`;
-    removeControl.title = hasFailedTracks
-        ? 'Delete this entry from history; downloaded files are kept'
-        : 'Hide this completed entry from history';
-    removeControl.onclick = () => requestControl(
+    collectionStatus.hidden = !allTracksCompleted;
+    hideControl.hidden = !allTracksCompleted;
+    retryControl.hidden = !allTracksFinished || !hasFailedTracks;
+    hideControl.onclick = () => requestControl(
         {action: protocolActions.REMOVE_COMPLETED_JOB, jobId: job.id},
-        removeControl
+        hideControl
+    );
+    retryControl.onclick = () => requestControl(
+        {action: protocolActions.RETRY_FAILED_COLLECTION_DOWNLOADS, jobId: job.id},
+        retryControl
     );
     trackList.replaceChildren(...tracks.map(track => createDownloadRow(job, track)));
     return group;
@@ -219,30 +198,43 @@ function createDownloadGroup(job) {
 
 function createDownloadRow(job, track) {
     const row = cloneTemplate('download-track-template');
-    const control = row.querySelector('button');
     const title = row.querySelector('.download-item__title');
     const progress = row.querySelector('.download-item__progress');
-    const error = row.querySelector('.download-item__error');
+    const stoppedControl = row.querySelector('.download-item__stopped');
     row.className = `download-item download-item--${track.status}`;
     title.textContent = `${track.position}. ${track.title}`;
     progress.textContent = getTrackProgress(track);
-    error.hidden = !track.error;
-    error.textContent = track.error ? 'Download failed. Try again.' : '';
-    const controlData = track.status === downloadStatus.PAUSED && !track.manualPaused
-        ? null
-        : TRACK_CONTROLS[track.status];
-    control.hidden = !controlData;
-    if (controlData) {
-        const [action, label, modifier] = controlData;
-        control.textContent = label;
-        control.className = `download-control ${modifier}`;
+    const workerStopped = track.status === downloadStatus.DOWNLOADING
+        && Boolean(track.workerStopped);
+    stoppedControl.hidden = !workerStopped;
+    const controls = [
+        [row.querySelector('.download-item__pause'), protocolActions.PAUSE_DOWNLOAD,
+            track.status === downloadStatus.DOWNLOADING && !workerStopped],
+        [row.querySelector('.download-item__resume'), protocolActions.RESUME_DOWNLOAD,
+            track.status === downloadStatus.PAUSED && track.manualPaused],
+        [row.querySelector('.download-item__retry'), protocolActions.RETRY_DOWNLOAD,
+            track.status === downloadStatus.FAILED]
+    ];
+    controls.forEach(([control, action, visible]) => {
+        control.hidden = !visible;
         control.onclick = () => requestControl({action, jobId: job.id, trackId: track.id}, control);
-    }
+    });
     return row;
 }
 
 function renderDownloads(state) {
     const jobs = state?.jobs || [];
+    const workersStopped = Boolean(state?.workersStopped);
+    elements.downloadsWorkersToggle.classList.toggle(
+        'downloads__workers-toggle--stopped', workersStopped
+    );
+    elements.downloadsWorkersToggle.dataset.stopped = String(workersStopped);
+    elements.downloadsWorkersToggle.disabled = false;
+    elements.downloadsWorkersToggle.title = workersStopped ? 'Resume workers' : 'Stop workers';
+    elements.downloadsWorkersToggle.setAttribute(
+        'aria-label', workersStopped ? 'Resume workers' : 'Stop workers'
+    );
+    elements.downloadsWorkersToggle.setAttribute('aria-pressed', String(workersStopped));
     if (!jobs.length) {
         elements.downloadsPanel.hidden = true;
         elements.downloadsList.replaceChildren();
@@ -251,30 +243,11 @@ function renderDownloads(state) {
 
     const tracks = jobs.flatMap(job => job.tracks || []);
     const completed = tracks.filter(track => track.status === downloadStatus.COMPLETED).length;
-    const hasControllableTracks = tracks.some(track => CONTROLLABLE_STATUSES.has(track.status));
-    const allCompleted = tracks.length > 0
-        && tracks.every(track => track.status === downloadStatus.COMPLETED);
-    const hasPausedCollections = jobs.some(job => job.isPaused);
-    const allControlPaused = Boolean(state.isPaused || hasPausedCollections);
+    const allCollectionsCanHide = jobs.every(canHideCollection);
     elements.downloadsPanel.hidden = false;
     elements.downloadsSummary.textContent = `${completed} of ${tracks.length}`;
-    const shouldShowGlobalPauseControl = hasControllableTracks || allControlPaused;
-    const shouldShowGlobalHideControl = !shouldShowGlobalPauseControl && allCompleted;
-    elements.downloadsGlobalControl.hidden = !shouldShowGlobalPauseControl
-        && !shouldShowGlobalHideControl;
-    elements.downloadsGlobalControl.disabled = false;
-    elements.downloadsGlobalControl.textContent = shouldShowGlobalHideControl
-        ? 'Hide all'
-        : allControlPaused ? 'Resume all' : 'Pause all';
-    elements.downloadsGlobalControl.dataset.paused = String(allControlPaused);
-    elements.downloadsGlobalControl.dataset.action = shouldShowGlobalHideControl
-        ? protocolActions.CLEAR_COMPLETED_DOWNLOAD_HISTORY
-        : protocolActions.SET_DOWNLOADS_PAUSED;
-    const globalControlModifier = shouldShowGlobalHideControl
-        ? 'remove'
-        : allControlPaused ? 'resume' : 'pause';
-    elements.downloadsGlobalControl.className =
-        `download-control download-control--${globalControlModifier}`;
+    elements.downloadsHideAll.hidden = !allCollectionsCanHide;
+    elements.downloadsHideAll.disabled = false;
 
     const scrollTop = elements.downloadsList.scrollTop;
     elements.downloadsList.replaceChildren(...jobs.map(createDownloadGroup));
@@ -372,12 +345,16 @@ elements.authorizeLink.addEventListener('click', event => {
     window.close();
 });
 elements.retry.addEventListener('click', loadAuthorizationState);
-elements.downloadsGlobalControl.addEventListener('click', () => {
-    const {action, paused} = elements.downloadsGlobalControl.dataset;
+elements.downloadsWorkersToggle.addEventListener('click', () => {
     requestControl({
-        action,
-        ...(action === protocolActions.SET_DOWNLOADS_PAUSED && {paused: paused !== 'true'})
-    }, elements.downloadsGlobalControl);
+        action: protocolActions.SET_WORKERS_STOPPED,
+        stopped: elements.downloadsWorkersToggle.dataset.stopped !== 'true'
+    }, elements.downloadsWorkersToggle);
+});
+elements.downloadsHideAll.addEventListener('click', () => {
+    requestControl({
+        action: protocolActions.CLEAR_COMPLETED_DOWNLOAD_HISTORY
+    }, elements.downloadsHideAll);
 });
 // noinspection JSDeprecatedSymbols -- WebExtension events still use addListener.
 chrome.storage.onChanged.addListener((changes, areaName) => {

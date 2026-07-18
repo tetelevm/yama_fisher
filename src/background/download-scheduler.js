@@ -1,5 +1,5 @@
 /**
- * Global concurrency, collection queues, and retries around the single-track pipeline.
+ * Global concurrency, worker stopping, collection queues, and track retries.
  */
 (() => {
     const background = globalThis.YMF_BACKGROUND ||= {};
@@ -9,6 +9,7 @@
     const config = globalThis.YMF_CONFIG;
     const {downloadStatus} = globalThis.YMF_PROTOCOL;
     const pendingCollections = new Set();
+    const FINISHED_STATUSES = new Set([downloadStatus.COMPLETED, downloadStatus.FAILED]);
     const downloadLimit = Math.max(1, Math.min(Number(config.downloadCount) || 1, 8));
     const resumedSlotWaiters = [];
     const slotWaiters = [];
@@ -38,11 +39,12 @@
         async function acquire(resumed) {
             if (acquired) return;
             while (true) {
+                await state.waitUntilWorkersStarted();
                 await state.waitUntilDownloadsResumed();
                 await state.waitWhileJobPaused(jobId);
                 await acquireDownloadSlot(resumed);
-                // A job paused while queued must return the claimed slot to runnable work.
-                if (!state.isJobSchedulingPaused(jobId)) break;
+                // A scheduling block set while queued must return the claimed slot.
+                if (!state.isDownloadSchedulingBlocked(jobId)) break;
                 releaseDownloadSlot();
             }
             acquired = true;
@@ -175,44 +177,54 @@
         }
     }
 
-    async function retryTrack(jobId, trackId) {
-        await state.ready;
-        const {job, track} = state.findTrack(jobId, trackId);
-        if (!job || !track) throw new Error('Download is no longer stored in extension history');
-        if (track.status !== downloadStatus.FAILED) {
-            throw new Error('Only a failed download can be retried');
-        }
-        state.updateTrackState(jobId, trackId, {
+    async function retryTracks(job, tracks) {
+        tracks.forEach(track => state.updateTrackState(job.id, track.id, {
             status: downloadStatus.QUEUED,
             manualPaused: false,
+            workerStopped: false,
             error: null,
             downloadId: null,
             bytesReceived: 0,
             totalBytes: null
-        });
+        }));
         let started = false;
         let retryTab = null;
+        // Queued retries still need the shared page, even after earlier tracks are prepared.
+        const pendingPreparations = new Set(tracks.map(track => track.id));
+        const coverDataCache = new Map();
         const releaseRetryTab = async () => {
             const acquiredTab = retryTab;
             retryTab = null;
             await acquiredTab?.release();
         };
+        const finishPreparation = async trackId => {
+            if (!pendingPreparations.delete(trackId) || pendingPreparations.size) return;
+            await releaseRetryTab();
+        };
         try {
+            await state.waitUntilWorkersStarted();
             await state.waitUntilDownloadsResumed();
             retryTab = await pageBridge.acquireRetryTab(job);
             await pageBridge.ensurePageTools(retryTab.tabId);
             started = true;
-            await withDownloadSlot(jobId, slotLease => (
-                trackPipeline.downloadTrack(
-                    jobId, retryTab.tabId, trackId, new Map(), releaseRetryTab, slotLease
-                )
-            ));
+            const results = await Promise.allSettled(tracks.map(async track => {
+                try {
+                    await withDownloadSlot(job.id, slotLease => trackPipeline.downloadTrack(
+                        job.id, retryTab.tabId, track.id, coverDataCache,
+                        () => finishPreparation(track.id), slotLease
+                    ));
+                } finally {
+                    await finishPreparation(track.id);
+                }
+            }));
+            const failedResult = results.find(result => result.status === 'rejected');
+            if (failedResult) throw failedResult.reason;
         } catch (error) {
             if (!started) {
-                state.updateTrackState(jobId, trackId, {
+                tracks.forEach(track => state.updateTrackState(job.id, track.id, {
                     status: downloadStatus.FAILED,
                     error: error.message
-                });
+                }));
             }
             throw error;
         } finally {
@@ -220,5 +232,31 @@
         }
     }
 
-    background.downloadScheduler = Object.freeze({downloadCollection, retryTrack});
+    async function retryTrack(jobId, trackId) {
+        await state.ready;
+        const {job, track} = state.findTrack(jobId, trackId);
+        if (!job || !track) throw new Error('Download is no longer stored in extension history');
+        if (track.status !== downloadStatus.FAILED) {
+            throw new Error('Only a failed download can be retried');
+        }
+        await retryTracks(job, [track]);
+    }
+
+    async function retryFailedTracks(jobId) {
+        await state.ready;
+        const job = state.findJob(jobId);
+        if (!job) throw new Error('Collection is no longer stored in extension history');
+        const tracks = job.tracks || [];
+        const failedTracks = tracks.filter(track => track.status === downloadStatus.FAILED);
+        const allTracksFinished = tracks.length > 0
+            && tracks.every(track => FINISHED_STATUSES.has(track.status));
+        if (!allTracksFinished || !failedTracks.length) {
+            throw new Error('Only a finished collection with failed tracks can be retried');
+        }
+        await retryTracks(job, failedTracks);
+    }
+
+    background.downloadScheduler = Object.freeze({
+        downloadCollection, retryTrack, retryFailedTracks
+    });
 })();

@@ -34,6 +34,10 @@ isolated code fragment.
 - Preserve the existing plain JavaScript style.
 - Keep project-owned JS, CSS, and HTML lines within 100 characters. Vendor
   files are exempt.
+- Give every user-facing value populated or replaced at runtime in an HTML
+  template a representative valid example, including text and visual state
+  classes. Do not leave dynamic text empty. Internal command attributes and
+  containers populated only with cloned child templates are exempt.
 - Create a helper only when it clarifies a contract or removes duplication.
 - Comment non-obvious invariants, not obvious operations.
 - Keep `README.md` in English and `README_RU.md` in Russian.
