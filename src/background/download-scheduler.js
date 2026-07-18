@@ -10,19 +10,21 @@
     const {downloadStatus} = globalThis.YMF_PROTOCOL;
     const pendingCollections = new Set();
     const downloadLimit = Math.max(1, Math.min(Number(config.downloadCount) || 1, 8));
+    const resumedSlotWaiters = [];
     const slotWaiters = [];
     let activeSlots = 0;
 
-    function acquireDownloadSlot() {
+    function acquireDownloadSlot(resumed = false) {
         if (activeSlots < downloadLimit) {
             activeSlots += 1;
             return Promise.resolve();
         }
-        return new Promise(resolve => slotWaiters.push(resolve));
+        const waiters = resumed ? resumedSlotWaiters : slotWaiters;
+        return new Promise(resolve => waiters.push(resolve));
     }
 
     function releaseDownloadSlot() {
-        const resume = slotWaiters.shift();
+        const resume = resumedSlotWaiters.shift() || slotWaiters.shift();
         if (resume) {
             resume();
             return;
@@ -30,19 +32,42 @@
         activeSlots = Math.max(0, activeSlots - 1);
     }
 
-    async function withDownloadSlot(jobId, callback) {
-        while (true) {
-            await state.waitUntilDownloadsResumed();
-            await state.waitWhileJobPaused(jobId);
-            await acquireDownloadSlot();
-            // A job can be paused while queued, so it must not keep the claimed global slot.
-            if (!state.isJobSchedulingPaused(jobId)) break;
+    function createDownloadSlotLease(jobId) {
+        let acquired = false;
+
+        async function acquire(resumed) {
+            if (acquired) return;
+            while (true) {
+                await state.waitUntilDownloadsResumed();
+                await state.waitWhileJobPaused(jobId);
+                await acquireDownloadSlot(resumed);
+                // A job paused while queued must return the claimed slot to runnable work.
+                if (!state.isJobSchedulingPaused(jobId)) break;
+                releaseDownloadSlot();
+            }
+            acquired = true;
+        }
+
+        function release() {
+            if (!acquired) return;
+            acquired = false;
             releaseDownloadSlot();
         }
+
+        return Object.freeze({
+            acquire: () => acquire(false),
+            reacquire: () => acquire(true),
+            release
+        });
+    }
+
+    async function withDownloadSlot(jobId, callback) {
+        const slotLease = createDownloadSlotLease(jobId);
+        await slotLease.acquire();
         try {
-            return await callback();
+            return await callback(slotLease);
         } finally {
-            releaseDownloadSlot();
+            slotLease.release();
         }
     }
 
@@ -94,7 +119,6 @@
         const coverDataCache = new Map();
         let coverDownloadPromise = null;
         let failedTracks = 0;
-        let nextTrackIndex = 0;
         const saveCoverOnce = track => coverDownloadPromise ||= trackPipeline
             .downloadCollectionCover(
                 track, normalizedCollection.subtitle, normalizedCollection.id
@@ -104,23 +128,16 @@
                     '[YaMa Fisher background] Could not save separate collection cover', error
                 );
             });
-        const downloadNext = async () => {
-            while (true) {
-                const index = nextTrackIndex++;
-                if (index >= trackIds.length) return;
-                try {
-                    await withDownloadSlot(jobId, () => trackPipeline.downloadTrack(
-                        jobId, tabId, trackIds[index], coverDataCache, saveCoverOnce
-                    ));
-                } catch {
-                    failedTracks += 1;
-                }
+        const downloadTrack = async trackId => {
+            try {
+                await withDownloadSlot(jobId, slotLease => trackPipeline.downloadTrack(
+                    jobId, tabId, trackId, coverDataCache, saveCoverOnce, slotLease
+                ));
+            } catch {
+                failedTracks += 1;
             }
         };
-        await Promise.all(Array.from(
-            {length: Math.min(downloadLimit, trackIds.length)},
-            downloadNext
-        ));
+        await Promise.all(trackIds.map(downloadTrack));
         await coverDownloadPromise;
         if (failedTracks) {
             console.warn(
@@ -177,8 +194,10 @@
             await state.waitUntilDownloadsResumed();
             await pageBridge.ensurePageTools(job.tabId);
             started = true;
-            await withDownloadSlot(jobId, () => (
-                trackPipeline.downloadTrack(jobId, job.tabId, trackId, new Map())
+            await withDownloadSlot(jobId, slotLease => (
+                trackPipeline.downloadTrack(
+                    jobId, job.tabId, trackId, new Map(), null, slotLease
+                )
             ));
         } catch (error) {
             if (!started) {

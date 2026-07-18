@@ -53,7 +53,8 @@ failed states. One track's failure does not stop the collection.
 The background stores download jobs and starts a limited number of tracks at
 the same time. A free queue slot is filled as soon as any track finishes,
 without waiting for the other tracks that started alongside it. The limit is
-global: all active collections and manual retries share the same slots.
+global: all active collections and manual retries share the same slots. Tracks
+wait independently for a shared slot instead of remaining bound to a worker.
 
 Collection startup is deduplicated by collection type and ID. An in-memory
 reservation closes the race before a job is persisted, while active persisted
@@ -65,7 +66,11 @@ collection cover is also saved as a separate file.
 
 Pause state exists at three levels: all jobs, one collection, and one track.
 These causes are tracked independently so resuming a narrower scope does not
-start work that remains paused at another scope.
+start work that remains paused at another scope. An in-memory track pipeline
+leases a global concurrency slot only while it can make progress. Pausing the
+track releases that lease without discarding its buffered data, so another
+queued track can run. Resumed pipelines receive the next available slot before
+tracks that have not started yet.
 
 The toolbar badge is derived from background download state. It counts queued,
 downloading, and paused tracks across every job, while completed and failed
@@ -244,7 +249,8 @@ remove duplication, while comments record non-obvious invariants.
 
 The project depends on internal Yandex Music page data, so changes to its format
 can break collection extraction. MP3 processing occurs in memory and consumes
-more resources with higher concurrency.
+more resources with higher concurrency. Paused pipelines retain their buffered
+audio, so many individually paused tracks can also increase memory use.
 
 The lack of a build step simplifies personal development and installation, but
 makes script loading order part of the architecture. The project targets only

@@ -107,8 +107,9 @@
     }
 
     function getProcessingStatus(job, track, controller) {
-        return isTrackPaused(job, track, controller)
-            ? downloadStatus.PAUSED
+        if (isTrackPaused(job, track, controller)) return downloadStatus.PAUSED;
+        return controller?.waitingForSlot
+            ? downloadStatus.QUEUED
             : downloadStatus.DOWNLOADING;
     }
 
@@ -120,9 +121,31 @@
     }
 
     async function waitWhilePaused(controller) {
-        while (isControllerPaused(controller)) {
-            await new Promise(resolve => { controller.resume = resolve; });
+        if (!isControllerPaused(controller)) return;
+        if (!controller.slotLease) {
+            while (isControllerPaused(controller)) {
+                await new Promise(resolve => { controller.resume = resolve; });
+            }
+            return;
         }
+
+        controller.waitingForSlot = true;
+        controller.slotLease.release();
+        while (true) {
+            while (isControllerPaused(controller)) {
+                await new Promise(resolve => { controller.resume = resolve; });
+            }
+            updateTrackState(controller.jobId, controller.trackId, {
+                status: downloadStatus.QUEUED
+            });
+            await controller.slotLease.reacquire();
+            if (!isControllerPaused(controller)) break;
+            controller.slotLease.release();
+        }
+        controller.waitingForSlot = false;
+        updateTrackState(controller.jobId, controller.trackId, {
+            status: downloadStatus.DOWNLOADING
+        });
     }
 
     async function waitForResume(key, isPaused) {
@@ -155,13 +178,17 @@
         return Boolean(downloadState.isPaused || job?.isPaused);
     }
 
-    function createTrackController(jobId, trackId) {
+    function createTrackController(jobId, trackId, slotLease) {
         const {job, track} = findTrack(jobId, trackId);
         if (!job || !track) return {job, track, controller: null};
         const controller = {
+            jobId,
+            trackId,
             manualPaused: Boolean(track.manualPaused),
             globalPaused: Boolean(downloadState.isPaused),
             collectionPaused: Boolean(job.isPaused),
+            waitingForSlot: false,
+            slotLease,
             resume: null
         };
         activeTrackControllers.set(getTrackKey(jobId, trackId), controller);

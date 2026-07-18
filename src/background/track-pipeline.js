@@ -137,11 +137,13 @@
         await downloadsAdapter.downloadFile(coverUrl, `${folder}/cover.jpg`);
     }
 
-    async function downloadTrack(jobId, tabId, trackId, coverDataCache, onTrackPrepared) {
+    async function downloadTrack(
+        jobId, tabId, trackId, coverDataCache, onTrackPrepared, slotLease
+    ) {
         let waitingNotice;
-        await state.waitUntilDownloadsResumed();
-        await state.waitWhileJobPaused(jobId);
-        const {job, track, controller} = state.createTrackController(jobId, trackId);
+        const {job, track, controller} = state.createTrackController(
+            jobId, trackId, slotLease
+        );
         if (!job || !track || !controller) {
             throw new Error('Download is no longer stored in extension history');
         }
@@ -150,6 +152,7 @@
                 status: state.getProcessingStatus(job, track, controller),
                 error: null
             });
+            await state.waitWhilePaused(controller);
             waitingNotice = setTimeout(() => console.warn(
                 '[YaMa Fisher background] MAIN world is still preparing the track after 15 seconds',
                 {trackId}
