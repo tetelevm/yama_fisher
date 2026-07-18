@@ -8,7 +8,6 @@
     const downloadsAdapter = background.downloadsAdapter;
     const config = globalThis.YMF_CONFIG;
     const {downloadStatus} = globalThis.YMF_PROTOCOL;
-    let activeDownloads = 0;
 
     function getArtists(track, fallback = 'Unknown artist') {
         return track.artists?.map(artist => artist.name).join(', ') || fallback;
@@ -48,11 +47,6 @@
             ? `${String(trackNumber).padStart(2, '0')}. `
             : '';
         return `${createFolder(track, albumArtist, albumId)}/${prefix}${sanitize(track.title)}.mp3`;
-    }
-
-    function updateBadge() {
-        chrome.action.setBadgeText({text: activeDownloads ? String(activeDownloads) : ''});
-        chrome.action.setBadgeBackgroundColor({color: '#ffcc00'});
     }
 
     async function readAudioData(response, onProgress, controller) {
@@ -151,8 +145,6 @@
         if (!job || !track || !controller) {
             throw new Error('Download is no longer stored in extension history');
         }
-        activeDownloads += 1;
-        updateBadge();
         try {
             state.updateTrackState(jobId, trackId, {
                 status: state.getProcessingStatus(job, track, controller),
@@ -207,11 +199,8 @@
         } finally {
             state.releaseTrackController(jobId, trackId);
             clearTimeout(waitingNotice);
-            activeDownloads = Math.max(0, activeDownloads - 1);
-            updateBadge();
         }
     }
 
-    updateBadge();
     background.trackPipeline = Object.freeze({downloadTrack, downloadCollectionCover});
 })();

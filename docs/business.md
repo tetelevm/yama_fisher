@@ -55,6 +55,8 @@ Each track displays progress and a status:
 The user can pause all downloads, one album, or one track. Resuming one album
 after a global pause must not resume the other albums. Failed tracks can be
 retried, and their failures do not prevent later tracks from starting.
+The toolbar badge shows the total number of queued, downloading, and paused
+tracks across all albums. Completed and failed tracks are not counted.
 
 ### 5. Receiving the result
 

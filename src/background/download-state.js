@@ -1,5 +1,5 @@
 /**
- * Persistent download state, Firefox download reconciliation, and pause controls.
+ * Persistent download state, queue badge, Firefox reconciliation, and pause controls.
  */
 (() => {
     const background = globalThis.YMF_BACKGROUND ||= {};
@@ -9,12 +9,19 @@
     const DOWNLOAD_STATE_RETENTION_MS = 24 * 60 * 60 * 1000;
     const PROGRESS_PERSIST_INTERVAL_MS = 1000;
     const ACTIVE_STATUSES = new Set([downloadStatus.DOWNLOADING, downloadStatus.PAUSED]);
+    const PENDING_STATUSES = new Set([
+        downloadStatus.QUEUED, downloadStatus.DOWNLOADING, downloadStatus.PAUSED
+    ]);
     const FINISHED_STATUSES = new Set([downloadStatus.COMPLETED, downloadStatus.FAILED]);
     let downloadState = {jobs: [], isPaused: false};
     let persistQueue = Promise.resolve();
     let progressPersistTimer = null;
+    let badgeText = null;
     const activeTrackControllers = new Map();
     const resumeWaiters = new Map();
+
+    chrome.action.setBadgeBackgroundColor({color: '#ffcc00'});
+    updateBadge();
 
     const ready = chrome.storage.local.get(DOWNLOAD_STATE_KEY).then(async result => {
         if (Array.isArray(result[DOWNLOAD_STATE_KEY]?.jobs)) {
@@ -31,6 +38,7 @@
     function persistDownloadState() {
         clearTimeout(progressPersistTimer);
         progressPersistTimer = null;
+        updateBadge();
         const snapshot = JSON.parse(JSON.stringify(downloadState));
         persistQueue = persistQueue
             .catch(() => {})
@@ -38,6 +46,16 @@
         return persistQueue.catch(error => {
             console.error('[YaMa Fisher background] Could not save download state', error);
         });
+    }
+
+    function updateBadge() {
+        const count = downloadState.jobs.reduce((total, job) => (
+            total + (job.tracks || []).filter(track => PENDING_STATUSES.has(track.status)).length
+        ), 0);
+        const text = count ? String(count) : '';
+        if (text === badgeText) return;
+        badgeText = text;
+        chrome.action.setBadgeText({text});
     }
 
     function scheduleProgressPersist() {

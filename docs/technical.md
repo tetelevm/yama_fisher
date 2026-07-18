@@ -67,6 +67,10 @@ Pause state exists at three levels: all jobs, one collection, and one track.
 These causes are tracked independently so resuming a narrower scope does not
 start work that remains paused at another scope.
 
+The toolbar badge is derived from background download state. It counts queued,
+downloading, and paused tracks across every job, while completed and failed
+tracks do not contribute to the displayed number.
+
 ## Metadata and files
 
 The resulting MP3 combines two data sources:
@@ -121,8 +125,8 @@ Responsibilities are distributed as follows:
 - `src/page/collection.js` manages the shared collection lifecycle;
 - `src/page/download.js` performs authorized track-data and file requests;
 - `src/background/downloads-adapter.js` isolates the Firefox Downloads API;
-- `src/background/download-state.js` manages jobs, progress, pauses, and
-  recovery;
+- `src/background/download-state.js` manages jobs, progress, pauses, the
+  toolbar badge, and recovery;
 - `src/background/page-bridge.js` manages tabs and MAIN-world injection;
 - `src/background/track-pipeline.js` processes one track;
 - `src/background/download-scheduler.js` manages the queue, concurrency, and
