@@ -74,7 +74,7 @@ their downloaded data, release their slots at the next processing checkpoint,
 and resume from the same data when the button is toggled off. No queued worker
 starts while the stop is active. A downloading track held by this control keeps
 its downloading status and shows a disabled Stopped control; other tracks do
-not change.
+not change. The stop button is disabled when no unfinished tracks remain.
 
 The toolbar badge shows the total number of queued, downloading, and paused
 tracks across all albums. Completed and failed tracks are not counted.
@@ -107,7 +107,10 @@ music/
 ```
 
 When every track finishes successfully, a green check appears before the album
-title. A completed album can be hidden from history.
+title. Download history headings place the artist before the collection title
+and wrap onto another line when needed. Artist names longer than 33 characters
+are displayed as their first 30 characters followed by an ellipsis. A completed
+album can be hidden from history.
 
 ## History and returning to downloads
 

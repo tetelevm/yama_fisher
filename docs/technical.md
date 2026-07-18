@@ -188,9 +188,15 @@ when every stored collection independently qualifies for its Hide action. The
 panel does not provide Pause all or Resume all controls.
 
 The panel header also owns the square worker-stop toggle. Its pressed state
-comes from `workersStopped`. The track template owns a separate disabled
-Stopped control, shown instead of Pause only while that downloading track has
-an active controller held by the worker gate.
+comes from `workersStopped`, and it is disabled when every stored track is in a
+finished state. The track template owns a separate disabled Stopped control,
+shown instead of Pause only while that downloading track has an active
+controller held by the worker gate.
+
+Download collection headings render the collection artist before its title.
+The popup limits an artist longer than 33 Unicode characters to its first 30
+characters plus `...`; the combined heading can wrap instead of being clipped
+to one line.
 
 ## Data exchange contract
 

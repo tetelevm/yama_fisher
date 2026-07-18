@@ -69,6 +69,8 @@ const screens = Object.fromEntries(
 );
 const DOWNLOAD_STATE_KEY = storageKeys.DOWNLOAD_STATE;
 const FINISHED_STATUSES = new Set([downloadStatus.COMPLETED, downloadStatus.FAILED]);
+const COLLECTION_ARTIST_MAX_LENGTH = 33;
+const COLLECTION_ARTIST_VISIBLE_LENGTH = 30;
 let loadingRetryTimer = null;
 
 export function renderPopup(state) {
@@ -163,6 +165,12 @@ function canHideCollection(job) {
         && tracks.every(track => track.status === downloadStatus.COMPLETED);
 }
 
+function truncateCollectionArtist(value) {
+    const characters = Array.from(value);
+    if (characters.length <= COLLECTION_ARTIST_MAX_LENGTH) return value;
+    return `${characters.slice(0, COLLECTION_ARTIST_VISIBLE_LENGTH).join('')}...`;
+}
+
 function createDownloadGroup(job) {
     const group = cloneTemplate('download-collection-template');
     const hideControl = group.querySelector('.download-collection__hide');
@@ -174,7 +182,7 @@ function createDownloadGroup(job) {
         || `Collection ${job.collectionId || job.albumId || 'untitled'}`;
     const collectionSubtitle = job.collectionSubtitle || job.albumArtist || '';
     title.textContent = collectionSubtitle
-        ? `${collectionTitle} - ${collectionSubtitle}`
+        ? `${truncateCollectionArtist(collectionSubtitle)} - ${collectionTitle}`
         : collectionTitle;
     const tracks = job.tracks || [];
     const allTracksCompleted = canHideCollection(job);
@@ -229,13 +237,13 @@ function renderDownloads(state) {
         'downloads__workers-toggle--stopped', workersStopped
     );
     elements.downloadsWorkersToggle.dataset.stopped = String(workersStopped);
-    elements.downloadsWorkersToggle.disabled = false;
     elements.downloadsWorkersToggle.title = workersStopped ? 'Resume workers' : 'Stop workers';
     elements.downloadsWorkersToggle.setAttribute(
         'aria-label', workersStopped ? 'Resume workers' : 'Stop workers'
     );
     elements.downloadsWorkersToggle.setAttribute('aria-pressed', String(workersStopped));
     if (!jobs.length) {
+        elements.downloadsWorkersToggle.disabled = true;
         elements.downloadsPanel.hidden = true;
         elements.downloadsList.replaceChildren();
         return;
@@ -244,7 +252,9 @@ function renderDownloads(state) {
     const tracks = jobs.flatMap(job => job.tracks || []);
     const completed = tracks.filter(track => track.status === downloadStatus.COMPLETED).length;
     const allCollectionsCanHide = jobs.every(canHideCollection);
+    const hasUnfinishedTracks = tracks.some(track => !FINISHED_STATUSES.has(track.status));
     elements.downloadsPanel.hidden = false;
+    elements.downloadsWorkersToggle.disabled = !hasUnfinishedTracks;
     elements.downloadsSummary.textContent = `${completed} of ${tracks.length}`;
     elements.downloadsHideAll.hidden = !allCollectionsCanHide;
     elements.downloadsHideAll.disabled = false;
