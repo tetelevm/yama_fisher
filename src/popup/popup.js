@@ -142,7 +142,9 @@ function createDownloadGroup(job) {
         : collectionTitle;
     const tracks = job.tracks || [];
     const hasControllableTracks = tracks.some(track => CONTROLLABLE_STATUSES.has(track.status));
-    const canHide = tracks.length > 0 && tracks.every(track => FINISHED_STATUSES.has(track.status));
+    const allTracksFinished = tracks.length > 0
+        && tracks.every(track => FINISHED_STATUSES.has(track.status));
+    const hasFailedTracks = tracks.some(track => track.status === downloadStatus.FAILED);
     collectionStatus.hidden = !tracks.length
         || !tracks.every(track => track.status === downloadStatus.COMPLETED);
     const shouldShowPauseControl = hasControllableTracks || job.isPaused;
@@ -156,7 +158,14 @@ function createDownloadGroup(job) {
         jobId: job.id,
         paused: !job.isPaused
     }, pauseControl);
-    removeControl.hidden = shouldShowPauseControl || !canHide;
+    removeControl.hidden = shouldShowPauseControl || !allTracksFinished;
+    removeControl.textContent = hasFailedTracks ? 'Delete' : 'Hide';
+    removeControl.className = `download-control download-control--${
+        hasFailedTracks ? 'delete' : 'remove'
+    }`;
+    removeControl.title = hasFailedTracks
+        ? 'Delete this entry from history; downloaded files are kept'
+        : 'Hide this completed entry from history';
     removeControl.onclick = () => requestControl(
         {action: protocolActions.REMOVE_COMPLETED_JOB, jobId: job.id},
         removeControl

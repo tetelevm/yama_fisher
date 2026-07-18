@@ -271,17 +271,28 @@ body {
     --control-hover: #c7c9cc;
 }
 
+.download-control--delete {
+    --control-bg: #b84343;
+    --control-color: #fff;
+    --control-hover: #d05050;
+}
+
 .download-control--retry {
     --control-bg: #6b4c30;
     --control-color: #efd2ad;
     --control-hover: #7b5938;
 }
 
-.download-control--pause,
+.download-control--pause {
+    --control-bg: #806a22;
+    --control-color: #fff0b0;
+    --control-hover: #9a812c;
+}
+
 .download-control--resume {
-    --control-bg: #354f68;
-    --control-color: #d0e0ee;
-    --control-hover: #41617e;
+    --control-bg: #2f704b;
+    --control-color: #e0f7e8;
+    --control-hover: #39875a;
 }
 
 .downloads__list {

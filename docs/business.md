@@ -91,7 +91,9 @@ title. A completed album can be hidden from history.
 Recent download state remains available after the popup closes. The user can
 view progress, errors, and results, retry failed tracks, or hide completed
 entries. History is intended for current downloads and is retained for 24
-hours.
+hours. A fully successful collection has a subdued Hide action. A finished
+collection with failed tracks instead has a prominent Delete action. Both
+actions remove only the history entry and leave downloaded files on disk.
 
 ## Configuring the result
 
