@@ -12,10 +12,14 @@
         const trackId = source.trackId ?? source.id;
         if (trackId === undefined || trackId === null || trackId === '') return null;
         const position = Number(source.position);
-        return {
+        const normalizedEntry = {
             trackId: String(trackId),
             position: Number.isInteger(position) && position > 0 ? position : index + 1
         };
+        if (source.albumId !== undefined && source.albumId !== null && source.albumId !== '') {
+            normalizedEntry.albumId = String(source.albumId);
+        }
+        return normalizedEntry;
     }
 
     function normalizeCollection(type, collection, fallbackId) {
@@ -80,9 +84,26 @@
                 };
             }
         }),
-        playlist: unsupportedDefinition('playlist',
-            /^\/playlists\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})\/?$/i,
-            'Could not load playlist'),
+        playlist: Object.freeze({
+            type: 'playlist',
+            implemented: true,
+            pageScripts: ['src/page/playlist.js'],
+            matchUrl: url => matchPath(
+                url,
+                /^\/playlists\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})\/?$/i
+            ),
+            present(collection) {
+                const trackCount = collection.entries.length;
+                return {
+                    eyebrow: 'Playlist',
+                    title: collection.title || 'Untitled',
+                    subtitle: '',
+                    meta: `${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`,
+                    downloadLabel: 'Download playlist',
+                    coverLabel: `Playlist cover: ${collection.title || 'Untitled'}`
+                };
+            }
+        }),
         artist: unsupportedDefinition('artist', /^\/artist\/(\d+)\/?$/, 'Could not load artist'),
         track: Object.freeze({
             type: 'track',

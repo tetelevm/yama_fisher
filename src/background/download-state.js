@@ -252,6 +252,7 @@
             isPaused: false,
             tracks: collection.entries.map((entry, index) => ({
                 id: entry.trackId,
+                albumId: entry.albumId || null,
                 position: entry.position,
                 title: trackTitles[String(entry.trackId)] || `Track ${index + 1}`,
                 status: downloadStatus.QUEUED,

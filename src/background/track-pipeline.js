@@ -27,10 +27,13 @@
             .trim() || 'unknown';
     }
 
-    function createFolder(track, albumArtist, albumId, collectionType, topTracksCount) {
+    function createFolder(
+        track, collectionSubtitle, albumId, collectionType, topTracksCount, collectionTitle
+    ) {
         const album = getAlbum(track, albumId);
         const root = config.downloadFolder.replace(/[/\\]+$/, '') || 'music';
-        const artist = albumArtist || getArtists(album, getArtists(track));
+        if (collectionType === 'playlist') return `${root}/${sanitize(collectionTitle)}`;
+        const artist = collectionSubtitle || getArtists(album, getArtists(track));
         if (collectionType === 'track') return `${root}/${sanitize(artist)}`;
         if (collectionType === 'artist-top-tracks') {
             return `${root}/${sanitize(artist)}/TOP ${topTracksCount}`;
@@ -42,28 +45,32 @@
     }
 
     function createFilename(
-        track, albumArtist, albumId, collectionType, topTracksCount
+        track, collectionSubtitle, albumId, collectionType, collectionTrackPosition,
+        topTracksCount, collectionTitle
     ) {
-        const trackNumber = getAlbum(track, albumId).trackPosition?.index;
+        const trackNumber = collectionType === 'playlist'
+            ? collectionTrackPosition
+            : getAlbum(track, albumId).trackPosition?.index;
         const omitTrackNumber = collectionType === 'track'
             || collectionType === 'artist-top-tracks';
         const prefix = !omitTrackNumber && config.numberingTracks && trackNumber
             ? `${String(trackNumber).padStart(2, '0')}. `
             : '';
         const folder = createFolder(
-            track, albumArtist, albumId, collectionType, topTracksCount
+            track, collectionSubtitle, albumId, collectionType, topTracksCount,
+            collectionTitle
         );
         return `${folder}/${prefix}${
             sanitize(track.title)
         }.mp3`;
     }
 
-    function getAlbumContextId(job) {
-        return job.collectionType === 'album'
-            ? job.collectionId
-            : job.collectionType === 'track'
-                ? job.collectionMetadata?.albumId || null
-                : null;
+    function getAlbumContextId(job, track) {
+        if (job.collectionType === 'album') return job.collectionId;
+        if (job.collectionType === 'track') {
+            return job.collectionMetadata?.albumId || null;
+        }
+        return job.collectionType === 'playlist' ? track.albumId || null : null;
     }
 
     async function readAudioData(response, onProgress, controller) {
@@ -164,7 +171,7 @@
         if (!job || !track || !controller) {
             throw new Error('Download is no longer stored in extension history');
         }
-        const albumId = getAlbumContextId(job);
+        const albumId = getAlbumContextId(job, track);
         try {
             state.updateTrackState(jobId, trackId, {
                 status: state.getProcessingStatus(job, track, controller),
@@ -209,7 +216,9 @@
                     job.collectionSubtitle,
                     albumId,
                     job.collectionType,
-                    job.collectionMetadata?.topTracksCount
+                    track.position,
+                    job.collectionMetadata?.topTracksCount,
+                    job.collectionTitle
                 ),
                 id => state.updateTrackState(jobId, trackId, {downloadId: id})
             );

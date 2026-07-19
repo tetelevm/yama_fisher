@@ -119,6 +119,9 @@
         if (job.collectionType === 'artist-top-tracks' && job.collectionId) {
             return `${origin}/artist/${encodeURIComponent(job.collectionId)}/tracks`;
         }
+        if (job.collectionType === 'playlist' && job.collectionId) {
+            return `${origin}/playlists/${encodeURIComponent(job.collectionId)}`;
+        }
         return `${origin}/`;
     }
 

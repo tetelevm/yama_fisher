@@ -17,10 +17,10 @@ globalThis.YMF_CONFIG = Object.freeze({
     // Number of an artist's top tracks to include in one download.
     artistTopTracksCount: 10,
 
-    // Root directory for downloads. Album subdirectories are added automatically.
+    // Root directory for downloads. Collection subdirectories are added automatically.
     downloadFolder: 'music',
 
-    // Add the track number to each filename.
+    // Number album and playlist filenames. Single and artist top tracks stay unnumbered.
     numberingTracks: true,
 
     // Keep completed downloads in the Firefox download manager.

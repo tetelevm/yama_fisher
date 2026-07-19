@@ -7,6 +7,7 @@
     const {auth, api} = globalThis.YMF_PAGE_CONSTANTS;
     const app = globalThis.yaMaFisher ||= {};
     const albumTracksCache = new Map();
+    const TRACK_METADATA_BATCH_SIZE = 50;
 
     async function generateSign(data) {
         const encoder = new TextEncoder();
@@ -84,6 +85,25 @@
         return fetchTrackInfo(String(trackId), albumId, getApiHeaders());
     }
 
+    async function fetchTracksMetadata(entries) {
+        const contextualIds = entries.map(entry => entry.albumId
+            ? `${entry.trackId}:${entry.albumId}`
+            : String(entry.trackId));
+        const batches = [];
+        for (let index = 0; index < contextualIds.length; index += TRACK_METADATA_BATCH_SIZE) {
+            batches.push(contextualIds.slice(index, index + TRACK_METADATA_BATCH_SIZE));
+        }
+        const responses = await Promise.all(batches.map(async batch => {
+            const params = new URLSearchParams({trackIds: batch.join(',')});
+            const response = await fetch(`${api.origin}tracks?${params}`, {
+                headers: getApiHeaders()
+            });
+            if (!response.ok) throw new Error(`Track metadata API error: ${response.status}`);
+            return (await response.json()).result || [];
+        }));
+        return responses.flat();
+    }
+
     async function fetchArtistTopTracks(artistId) {
         const response = await fetch(`${api.origin}artists/${artistId}/tracks`, {
             headers: getApiHeaders()
@@ -106,6 +126,19 @@
         if (!response.ok) throw new Error(`Artist metadata API error: ${response.status}`);
         const payload = await response.json();
         return payload.result?.artist || null;
+    }
+
+    async function fetchPlaylist(playlistId) {
+        const params = new URLSearchParams({richTracks: 'true'});
+        const response = await fetch(
+            `${api.origin}playlist/${encodeURIComponent(playlistId)}?${params}`,
+            {headers: getApiHeaders()}
+        );
+        if (!response.ok) throw new Error(`Playlist API error: ${response.status}`);
+        const result = (await response.json()).result;
+        return result?.playlist
+            ? {...result.playlist, tracks: result.playlist.tracks || result.tracks || []}
+            : result;
     }
 
     async function fetchTrackForDownload(trackId, albumId) {
@@ -148,7 +181,9 @@
 
     app.fetchAlbumTracks = fetchAlbumTracks;
     app.fetchTrackMetadata = fetchTrackMetadata;
+    app.fetchTracksMetadata = fetchTracksMetadata;
     app.fetchArtistTopTracks = fetchArtistTopTracks;
     app.fetchArtistMetadata = fetchArtistMetadata;
+    app.fetchPlaylist = fetchPlaylist;
     app.fetchTrackForDownload = fetchTrackForDownload;
 })();

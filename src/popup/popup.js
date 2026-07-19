@@ -181,7 +181,7 @@ function createDownloadGroup(job) {
     const collectionTitle = job.collectionTitle || job.albumTitle
         || `Collection ${job.collectionId || job.albumId || 'untitled'}`;
     const collectionSubtitle = job.collectionSubtitle || job.albumArtist || '';
-    title.textContent = job.collectionType === 'artist-top-tracks'
+    title.textContent = ['artist-top-tracks', 'playlist'].includes(job.collectionType)
         ? collectionTitle
         : collectionSubtitle
         ? `${truncateCollectionArtist(collectionSubtitle)} - ${collectionTitle}`

@@ -2,9 +2,9 @@
 
 ## Why the project exists
 
-YaMa Fisher saves Yandex Music albums and individual tracks to a computer. An
-album becomes a ready-to-use directory with numbered MP3 files, correct
-metadata, and a separate cover image.
+YaMa Fisher saves Yandex Music albums, playlists, and individual tracks to a
+computer. An album becomes a ready-to-use directory with numbered MP3 files,
+correct metadata, and a separate cover image.
 
 The extension is intended for personal use in Firefox by someone with a Yandex
 Music account. It works on the `.ru`, `.com`, `.kz`, `.by`, and `.uz` service
@@ -26,15 +26,18 @@ The user opens the extension popup. If they are not authorized, the extension
 offers a Yandex sign-in. After signing in, the user can return to the music page
 and start a download.
 
-### 2. Album, track, or artist top selection
+### 2. Collection selection
 
 The user opens an album at `/album/<id>` or an individual track at
 `/album/<albumId>/track/<trackId>`. Before downloading, the popup displays the
 collection title, artist, and cover. A track is shown as a one-track collection:
 its title replaces the album title and the same collection card starts its
-download. Playlist and artist links are recognized but cannot be downloaded yet.
-The extension reports that these features are not implemented. A small text
-link to the project's GitHub page remains in the popup's upper-right corner.
+download. A small text link to the project's GitHub page remains in the popup's
+upper-right corner.
+
+A playlist at `/playlists/<uuid>` uses the same card. The popup displays only
+the playlist title, cover, track count, and ordered track list; it does not show
+an artist for the collection.
 
 The user can also open `/artist/<artistId>/tracks` to download the first top
 tracks of an artist. The collection is named `artist - TOP N`, where `N` is the
@@ -43,7 +46,7 @@ all available tracks without changing its name.
 
 ### 3. Starting a download
 
-The user starts an album or one track with one button. Tracks enter a queue and
+The user starts a collection with one button. Tracks enter a queue and
 begin downloading in parallel. As soon as one track finishes, the next one uses
 the freed slot, so a slow file does not hold up the entire queue. Track titles
 are visible as soon as the queue appears. The download button is disabled after
@@ -84,7 +87,7 @@ its downloading status and shows a disabled Stopped control; other tracks do
 not change. The stop button is disabled when no unfinished tracks remain.
 
 The toolbar badge shows the total number of queued, downloading, and paused
-tracks across all albums. Completed and failed tracks are not counted.
+tracks across all collections. Completed and failed tracks are not counted.
 
 ### 5. Receiving the result
 
@@ -98,6 +101,9 @@ track title as the collection title and the track artist as the collection artis
 
 Artist top tracks are saved in `music/artist/TOP N`. Their filenames contain
 only track titles without numeric prefixes.
+
+A playlist is saved in `music/playlist name`. Its files are numbered according
+to playlist order and do not include track artists in their names.
 
 The extension owner sets only the common download directory in the source
 configuration. Albums always use the nested `artist/year album` structure.
@@ -144,9 +150,9 @@ own Hide action available.
 
 A failed track can be retried after its original tab is closed or navigated
 away. The extension reuses another suitable Yandex Music tab when possible. If
-none exists, it briefly opens the album in an inactive tab and closes that tab
-as soon as the track request is prepared. The Yandex Music authorization must
-still be valid.
+none exists, it briefly opens the source collection in an inactive tab and
+closes that tab as soon as the track request is prepared. The Yandex Music
+authorization must still be valid.
 
 ## Configuring the result
 
@@ -156,10 +162,9 @@ change.
 
 ## Current product boundaries
 
-The extension currently downloads complete albums, individual tracks, and
-artist top tracks. The current version does not support:
+The extension currently downloads complete albums, playlists, individual
+tracks, and artist top tracks. The current version does not support:
 
-- playlists;
 - artist pages other than their top-tracks view;
 - settings through the user interface;
 - browsers other than Firefox.
