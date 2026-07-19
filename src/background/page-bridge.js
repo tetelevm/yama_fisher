@@ -116,6 +116,9 @@
                 encodeURIComponent(job.collectionId)
             }`;
         }
+        if (job.collectionType === 'artist-top-tracks' && job.collectionId) {
+            return `${origin}/artist/${encodeURIComponent(job.collectionId)}/tracks`;
+        }
         return `${origin}/`;
     }
 

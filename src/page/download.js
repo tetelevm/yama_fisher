@@ -84,6 +84,30 @@
         return fetchTrackInfo(String(trackId), albumId, getApiHeaders());
     }
 
+    async function fetchArtistTopTracks(artistId) {
+        const response = await fetch(`${api.origin}artists/${artistId}/tracks`, {
+            headers: getApiHeaders()
+        });
+        if (!response.ok) throw new Error(`Artist tracks API error: ${response.status}`);
+        const payload = await response.json();
+        const {result} = payload;
+        return {
+            artist: result?.artist || null,
+            tracks: Array.isArray(result?.tracks)
+                ? result.tracks
+                : Array.isArray(result) ? result : []
+        };
+    }
+
+    async function fetchArtistMetadata(artistId) {
+        const response = await fetch(`${api.origin}artists/${artistId}/brief-info`, {
+            headers: getApiHeaders()
+        });
+        if (!response.ok) throw new Error(`Artist metadata API error: ${response.status}`);
+        const payload = await response.json();
+        return payload.result?.artist || null;
+    }
+
     async function fetchTrackForDownload(trackId, albumId) {
         try {
             const plainTrackId = String(trackId).split(':')[0];
@@ -124,5 +148,7 @@
 
     app.fetchAlbumTracks = fetchAlbumTracks;
     app.fetchTrackMetadata = fetchTrackMetadata;
+    app.fetchArtistTopTracks = fetchArtistTopTracks;
+    app.fetchArtistMetadata = fetchArtistMetadata;
     app.fetchTrackForDownload = fetchTrackForDownload;
 })();

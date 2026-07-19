@@ -26,7 +26,7 @@ The user opens the extension popup. If they are not authorized, the extension
 offers a Yandex sign-in. After signing in, the user can return to the music page
 and start a download.
 
-### 2. Album or track selection
+### 2. Album, track, or artist top selection
 
 The user opens an album at `/album/<id>` or an individual track at
 `/album/<albumId>/track/<trackId>`. Before downloading, the popup displays the
@@ -35,6 +35,11 @@ its title replaces the album title and the same collection card starts its
 download. Playlist and artist links are recognized but cannot be downloaded yet.
 The extension reports that these features are not implemented. A small text
 link to the project's GitHub page remains in the popup's upper-right corner.
+
+The user can also open `/artist/<artistId>/tracks` to download the first top
+tracks of an artist. The collection is named `artist - TOP N`, where `N` is the
+configured top-track limit. If fewer tracks are available, the collection uses
+all available tracks without changing its name.
 
 ### 3. Starting a download
 
@@ -91,8 +96,12 @@ An individually selected track is saved without a number or a separate album
 directory: `music/artist/track title.mp3`. Its popup and history entry use the
 track title as the collection title and the track artist as the collection artist.
 
+Artist top tracks are saved in `music/artist/TOP N`. Their filenames contain
+only track titles without numeric prefixes.
+
 The extension owner sets only the common download directory in the source
 configuration. Albums always use the nested `artist/year album` structure.
+`artistTopTracksCount` sets the number of artist top tracks and defaults to 10.
 
 The resulting structure looks like this:
 
@@ -147,10 +156,10 @@ change.
 
 ## Current product boundaries
 
-The extension currently downloads complete albums and individual tracks. The
-current version does not support:
+The extension currently downloads complete albums, individual tracks, and
+artist top tracks. The current version does not support:
 
 - playlists;
-- artist pages;
+- artist pages other than their top-tracks view;
 - settings through the user interface;
 - browsers other than Firefox.

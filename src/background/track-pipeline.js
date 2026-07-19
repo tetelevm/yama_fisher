@@ -27,25 +27,43 @@
             .trim() || 'unknown';
     }
 
-    function createFolder(track, albumArtist, albumId, collectionType) {
+    function createFolder(track, albumArtist, albumId, collectionType, topTracksCount) {
         const album = getAlbum(track, albumId);
         const root = config.downloadFolder.replace(/[/\\]+$/, '') || 'music';
         const artist = albumArtist || getArtists(album, getArtists(track));
         if (collectionType === 'track') return `${root}/${sanitize(artist)}`;
+        if (collectionType === 'artist-top-tracks') {
+            return `${root}/${sanitize(artist)}/TOP ${topTracksCount}`;
+        }
         const albumFolder = `${sanitize(album.year || 'Unknown year')} ${
             sanitize(album.title || 'Unknown album')
         }`;
         return `${root}/${sanitize(artist)}/${albumFolder}`;
     }
 
-    function createFilename(track, albumArtist, albumId, collectionType) {
+    function createFilename(
+        track, albumArtist, albumId, collectionType, topTracksCount
+    ) {
         const trackNumber = getAlbum(track, albumId).trackPosition?.index;
-        const prefix = collectionType !== 'track' && config.numberingTracks && trackNumber
+        const omitTrackNumber = collectionType === 'track'
+            || collectionType === 'artist-top-tracks';
+        const prefix = !omitTrackNumber && config.numberingTracks && trackNumber
             ? `${String(trackNumber).padStart(2, '0')}. `
             : '';
-        return `${createFolder(track, albumArtist, albumId, collectionType)}/${prefix}${
+        const folder = createFolder(
+            track, albumArtist, albumId, collectionType, topTracksCount
+        );
+        return `${folder}/${prefix}${
             sanitize(track.title)
         }.mp3`;
+    }
+
+    function getAlbumContextId(job) {
+        return job.collectionType === 'album'
+            ? job.collectionId
+            : job.collectionType === 'track'
+                ? job.collectionMetadata?.albumId || null
+                : null;
     }
 
     async function readAudioData(response, onProgress, controller) {
@@ -146,6 +164,7 @@
         if (!job || !track || !controller) {
             throw new Error('Download is no longer stored in extension history');
         }
+        const albumId = getAlbumContextId(job);
         try {
             state.updateTrackState(jobId, trackId, {
                 status: state.getProcessingStatus(job, track, controller),
@@ -162,7 +181,7 @@
                 func: (id, albumId) => (
                     globalThis.yaMaFisher?.fetchTrackForDownload(id, albumId)
                 ),
-                args: [String(trackId), job.collectionMetadata?.albumId || job.collectionId],
+                args: [String(trackId), albumId],
                 world: 'MAIN'
             });
             clearTimeout(waitingNotice);
@@ -182,14 +201,15 @@
             await onTrackPrepared?.(data.trackinfo);
             const extensionBlobUrl = await createTaggedAudio(data,
                 (received, total) => state.updateTrackProgress(jobId, trackId, received, total),
-                controller, coverDataCache, job.collectionMetadata?.albumId || job.collectionId);
+                controller, coverDataCache, albumId);
             const downloadId = await downloadsAdapter.downloadFile(
                 extensionBlobUrl,
                 createFilename(
                     data.trackinfo,
                     job.collectionSubtitle,
-                    job.collectionMetadata?.albumId || job.collectionId,
-                    job.collectionType
+                    albumId,
+                    job.collectionType,
+                    job.collectionMetadata?.topTracksCount
                 ),
                 id => state.updateTrackState(jobId, trackId, {downloadId: id})
             );

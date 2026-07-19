@@ -20,7 +20,7 @@ status names form a common protocol between these contexts.
 
 A collection is the shared context from which the user starts a download.
 Albums, playlists, and possible future sources are equal collection types.
-Albums and individual tracks are implemented at present.
+Albums, individual tracks, and artist top-track lists are implemented at present.
 
 A collection has:
 
@@ -34,6 +34,8 @@ The collection is the source of contextual data. An album determines the
 directory, track order, year, genre, cover, and album metadata in the resulting
 files. A track collection retains its URL's album ID for metadata, but saves in
 the common artist directory without an album subdirectory or track number.
+An artist top-track collection takes the configured first `N` tracks and saves
+them in the artist's `TOP N` directory.
 
 ## Track
 
@@ -64,6 +66,7 @@ Track processing obtains audio and metadata, adds ID3 data and cover art,
 builds a safe path, and hands the completed file to Firefox Downloads. The
 album cover is also saved as a separate file. A single-track collection embeds
 the cover in its MP3 but does not save a separate cover file.
+Artist top-track collections likewise do not save a separate cover file.
 
 Pause state exists internally at three levels: all jobs, one collection, and
 one track. The popup exposes only track controls. During background recovery,
@@ -99,13 +102,15 @@ The resulting MP3 combines two data sources:
 `downloadFolder` configures only the common download directory. Albums always
 use its `artist/year album` subdirectory structure. A single track uses
 `artist/track title.mp3` beneath that directory, without a number. Every dynamic
-path segment is sanitized.
+path segment is sanitized. Artist top tracks use `artist/TOP N` and receive the
+track title as their filename without a numeric prefix.
 
 ## Settings
 
 Persistent settings are stored in `src/config.js` and edited manually. They
 control audio quality, cover size, concurrency, the common download directory,
-track numbering, and Firefox Downloads history behavior.
+the artist top-track limit, track numbering, and Firefox Downloads history
+behavior.
 
 ## Authorization and token storage
 
@@ -146,6 +151,7 @@ Responsibilities are distributed as follows:
 - `src/page/album-parser.js` reconstructs album data from HTML;
 - `src/page/album.js` obtains album data;
 - `src/page/track.js` obtains individual-track data;
+- `src/page/artist-top-tracks.js` obtains artist top-track data;
 - `src/page/collection.js` manages the shared collection lifecycle;
 - `src/page/download.js` performs authorized track-data and file requests;
 - `src/background/downloads-adapter.js` isolates the Firefox Downloads API;
@@ -240,6 +246,11 @@ For a `track` collection, `metadata.albumId` preserves the album context from
 the track URL. It is copied to the stored job as `collectionMetadata` so retries
 use the same metadata context and can reopen the original track URL.
 
+For an `artist-top-tracks` collection, `metadata.topTracksCount` is the
+configured limit used in the collection title and output directory. Its entries
+are capped to that limit, so an artist with fewer available top tracks creates a
+smaller collection without an error.
+
 ## Loading order and dependencies
 
 The background uses classic scripts. Their order in `manifest.json` is also
@@ -294,7 +305,7 @@ Retry first prefers the original tab when it is still on the stored source
 origin, then another ready tab on that origin. If neither exists, the page
 bridge creates an inactive album or track tab, waits for it to load, and removes
 only that extension-created tab once MAIN-world track preparation finishes or
-fails.
+fails. Artist top-track retries use the artist top-tracks tab.
 
 An unfinished in-memory stage cannot resume after a background restart and is
 not marked successful. Only state that can be reconciled with Firefox Downloads

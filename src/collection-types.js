@@ -103,6 +103,23 @@
                     coverLabel: `Track cover: ${collection.title || 'Untitled'}`
                 };
             }
+        }),
+        'artist-top-tracks': Object.freeze({
+            type: 'artist-top-tracks',
+            implemented: true,
+            pageScripts: ['src/page/artist-top-tracks.js'],
+            matchUrl: url => matchPath(url, /^\/artist\/(\d+)\/tracks\/?$/),
+            present(collection) {
+                const trackCount = collection.entries.length;
+                return {
+                    eyebrow: 'Artist',
+                    title: collection.title || 'Untitled',
+                    subtitle: collection.subtitle || 'Unknown artist',
+                    meta: `${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`,
+                    downloadLabel: 'Download top tracks',
+                    coverLabel: `Artist cover: ${collection.subtitle || 'Unknown artist'}`
+                };
+            }
         })
     });
 

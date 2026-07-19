@@ -14,6 +14,9 @@ globalThis.YMF_CONFIG = Object.freeze({
     // Number of tracks to download at once across all collections and retries.
     downloadCount: 4,
 
+    // Number of an artist's top tracks to include in one download.
+    artistTopTracksCount: 10,
+
     // Root directory for downloads. Album subdirectories are added automatically.
     downloadFolder: 'music',
 
