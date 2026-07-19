@@ -2,9 +2,9 @@
 
 ## Why the project exists
 
-YaMa Fisher saves a Yandex Music album to a computer without requiring the user
-to download each track manually. The result is a ready-to-use directory with
-numbered MP3 files, correct metadata, and a separate cover image.
+YaMa Fisher saves Yandex Music albums and individual tracks to a computer. An
+album becomes a ready-to-use directory with numbered MP3 files, correct
+metadata, and a separate cover image.
 
 The extension is intended for personal use in Firefox by someone with a Yandex
 Music account. It works on the `.ru`, `.com`, `.kz`, `.by`, and `.uz` service
@@ -26,23 +26,25 @@ The user opens the extension popup. If they are not authorized, the extension
 offers a Yandex sign-in. After signing in, the user can return to the music page
 and start a download.
 
-### 2. Album selection
+### 2. Album or track selection
 
-The user opens the desired album page at `/album/<id>`. Before downloading, the
-popup displays the album title, artist, cover, and track list. Playlist, artist,
-and individual-track links are recognized but cannot be downloaded yet. The
-extension reports that these features are not implemented. The collection card
-provides the primary download action. A small text link to the project's GitHub
-page remains in the popup's upper-right corner.
+The user opens an album at `/album/<id>` or an individual track at
+`/album/<albumId>/track/<trackId>`. Before downloading, the popup displays the
+collection title, artist, and cover. A track is shown as a one-track collection:
+its title replaces the album title and the same collection card starts its
+download. Playlist and artist links are recognized but cannot be downloaded yet.
+The extension reports that these features are not implemented. A small text
+link to the project's GitHub page remains in the popup's upper-right corner.
 
 ### 3. Starting a download
 
-The user starts the whole album with one button. Tracks enter a queue and begin
-downloading in parallel. As soon as one track finishes, the next one uses the
-freed slot, so a slow file does not hold up the entire queue. Track titles are
-visible as soon as the queue appears. The download button is disabled after the
-first click, and an album that is already downloading cannot be queued again.
-The parallel download limit is shared by all active albums and retried tracks.
+The user starts an album or one track with one button. Tracks enter a queue and
+begin downloading in parallel. As soon as one track finishes, the next one uses
+the freed slot, so a slow file does not hold up the entire queue. Track titles
+are visible as soon as the queue appears. The download button is disabled after
+the first click, and a collection that is already downloading cannot be queued
+again. The parallel download limit is shared by all active collections and
+retried tracks.
 
 ### 4. Monitoring and control
 
@@ -85,6 +87,13 @@ All tracks are saved in the selected album's directory. Even if a track also
 belongs to another album or compilation, its order, cover, and metadata come
 from the album page where the user started the download.
 
+An individually selected track is saved without a number or a separate album
+directory: `music/artist/track title.mp3`. Its popup and history entry use the
+track title as the collection title and the track artist as the collection artist.
+
+The extension owner sets only the common download directory in the source
+configuration. Albums always use the nested `artist/year album` structure.
+
 The resulting structure looks like this:
 
 ```text
@@ -106,11 +115,11 @@ music/
 - - - ...
 ```
 
-When every track finishes successfully, a green check appears before the album
-title. Download history headings place the artist before the collection title
-and wrap onto another line when needed. Artist names longer than 33 characters
-are displayed as their first 30 characters followed by an ellipsis. A completed
-album can be hidden from history.
+When every track finishes successfully, a green check appears before the
+collection title. Download history headings place the artist before the
+collection title and wrap onto another line when needed. Artist names longer
+than 33 characters are displayed as their first 30 characters followed by an
+ellipsis. A completed collection can be hidden from history.
 
 ## History and returning to downloads
 
@@ -138,11 +147,10 @@ change.
 
 ## Current product boundaries
 
-The extension currently downloads complete albums only. The current version
-does not support:
+The extension currently downloads complete albums and individual tracks. The
+current version does not support:
 
 - playlists;
 - artist pages;
-- individual tracks as a standalone workflow;
 - settings through the user interface;
 - browsers other than Firefox.

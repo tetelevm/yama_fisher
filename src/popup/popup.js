@@ -210,7 +210,9 @@ function createDownloadRow(job, track) {
     const progress = row.querySelector('.download-item__progress');
     const stoppedControl = row.querySelector('.download-item__stopped');
     row.className = `download-item download-item--${track.status}`;
-    title.textContent = `${track.position}. ${track.title}`;
+    title.textContent = job.collectionType === 'track'
+        ? track.title
+        : `${track.position}. ${track.title}`;
     progress.textContent = getTrackProgress(track);
     const workerStopped = track.status === downloadStatus.DOWNLOADING
         && Boolean(track.workerStopped);

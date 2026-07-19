@@ -80,6 +80,10 @@
         return (await response.json()).result?.[0];
     }
 
+    function fetchTrackMetadata(trackId, albumId) {
+        return fetchTrackInfo(String(trackId), albumId, getApiHeaders());
+    }
+
     async function fetchTrackForDownload(trackId, albumId) {
         try {
             const plainTrackId = String(trackId).split(':')[0];
@@ -119,5 +123,6 @@
     }
 
     app.fetchAlbumTracks = fetchAlbumTracks;
+    app.fetchTrackMetadata = fetchTrackMetadata;
     app.fetchTrackForDownload = fetchTrackForDownload;
 })();

@@ -245,6 +245,7 @@
             collectionId: String(collection?.id || ''),
             collectionTitle: collection?.title || 'Untitled',
             collectionSubtitle: collection?.subtitle || '',
+            collectionMetadata: collection?.metadata || {},
             tabId,
             sourceOrigin,
             createdAt: Date.now(),

@@ -84,12 +84,26 @@
             /^\/playlists\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})\/?$/i,
             'Could not load playlist'),
         artist: unsupportedDefinition('artist', /^\/artist\/(\d+)\/?$/, 'Could not load artist'),
-        track: unsupportedDefinition(
-            'track',
-            /^\/album\/(\d+)\/track\/(\d+)\/?$/,
-            'Could not load track',
-            match => ({id: match[2], albumId: match[1]})
-        )
+        track: Object.freeze({
+            type: 'track',
+            implemented: true,
+            pageScripts: ['src/page/track.js'],
+            matchUrl: url => matchPath(
+                url,
+                /^\/album\/(\d+)\/track\/(\d+)\/?$/,
+                match => ({id: match[2], albumId: match[1]})
+            ),
+            present(collection) {
+                return {
+                    eyebrow: 'Track',
+                    title: collection.title || 'Untitled',
+                    subtitle: collection.subtitle || 'Unknown artist',
+                    meta: '1 track',
+                    downloadLabel: 'Download track',
+                    coverLabel: `Track cover: ${collection.title || 'Untitled'}`
+                };
+            }
+        })
     });
 
     globalThis.YMF_COLLECTION_TYPES = Object.freeze({

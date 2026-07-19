@@ -14,9 +14,8 @@ globalThis.YMF_CONFIG = Object.freeze({
     // Number of tracks to download at once across all collections and retries.
     downloadCount: 4,
 
-    // Track directory template based on its album metadata.
-    // Available placeholders: %genre%, %year%, %artist%, %album%.
-    downloadFolder: 'music/%artist%/%year% %album%',
+    // Root directory for downloads. Album subdirectories are added automatically.
+    downloadFolder: 'music',
 
     // Add the track number to each filename.
     numberingTracks: true,

@@ -27,26 +27,25 @@
             .trim() || 'unknown';
     }
 
-    function createFolder(track, albumArtist, albumId) {
+    function createFolder(track, albumArtist, albumId, collectionType) {
         const album = getAlbum(track, albumId);
-        const values = {
-            '%genre%': album.genre || 'Unknown',
-            '%year%': album.year || 'Unknown year',
-            '%artist%': albumArtist || getArtists(album, getArtists(track)),
-            '%album%': album.title || 'Unknown album'
-        };
-        return Object.entries(values).reduce(
-            (folder, [placeholder, value]) => folder.replaceAll(placeholder, sanitize(value)),
-            config.downloadFolder.replace(/[/\\]+$/, '') || 'music'
-        );
+        const root = config.downloadFolder.replace(/[/\\]+$/, '') || 'music';
+        const artist = albumArtist || getArtists(album, getArtists(track));
+        if (collectionType === 'track') return `${root}/${sanitize(artist)}`;
+        const albumFolder = `${sanitize(album.year || 'Unknown year')} ${
+            sanitize(album.title || 'Unknown album')
+        }`;
+        return `${root}/${sanitize(artist)}/${albumFolder}`;
     }
 
-    function createFilename(track, albumArtist, albumId) {
+    function createFilename(track, albumArtist, albumId, collectionType) {
         const trackNumber = getAlbum(track, albumId).trackPosition?.index;
-        const prefix = config.numberingTracks && trackNumber
+        const prefix = collectionType !== 'track' && config.numberingTracks && trackNumber
             ? `${String(trackNumber).padStart(2, '0')}. `
             : '';
-        return `${createFolder(track, albumArtist, albumId)}/${prefix}${sanitize(track.title)}.mp3`;
+        return `${createFolder(track, albumArtist, albumId, collectionType)}/${prefix}${
+            sanitize(track.title)
+        }.mp3`;
     }
 
     async function readAudioData(response, onProgress, controller) {
@@ -163,7 +162,7 @@
                 func: (id, albumId) => (
                     globalThis.yaMaFisher?.fetchTrackForDownload(id, albumId)
                 ),
-                args: [String(trackId), job.collectionId],
+                args: [String(trackId), job.collectionMetadata?.albumId || job.collectionId],
                 world: 'MAIN'
             });
             clearTimeout(waitingNotice);
@@ -183,10 +182,15 @@
             await onTrackPrepared?.(data.trackinfo);
             const extensionBlobUrl = await createTaggedAudio(data,
                 (received, total) => state.updateTrackProgress(jobId, trackId, received, total),
-                controller, coverDataCache, job.collectionId);
+                controller, coverDataCache, job.collectionMetadata?.albumId || job.collectionId);
             const downloadId = await downloadsAdapter.downloadFile(
                 extensionBlobUrl,
-                createFilename(data.trackinfo, job.collectionSubtitle, job.collectionId),
+                createFilename(
+                    data.trackinfo,
+                    job.collectionSubtitle,
+                    job.collectionMetadata?.albumId || job.collectionId,
+                    job.collectionType
+                ),
                 id => state.updateTrackState(jobId, trackId, {downloadId: id})
             );
             state.readDownloadProgress(downloadId);

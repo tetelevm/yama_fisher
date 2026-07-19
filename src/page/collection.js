@@ -59,7 +59,7 @@
         notify(storageKey, {kind: collectionStateKind.LOADING});
 
         try {
-            const result = await source.read({id: match.id, url: requestedUrl});
+            const result = await source.read({...match, url: requestedUrl});
             if (sequence !== readSequence || window.location.href !== requestedUrl) return;
             const collection = globalThis.YMF_COLLECTION_TYPES?.normalize(
                 match.definition.type, result, match.id

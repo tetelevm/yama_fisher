@@ -19,8 +19,8 @@ status names form a common protocol between these contexts.
 ## Collection
 
 A collection is the shared context from which the user starts a download.
-Albums, playlists, and possible future sources are equal collection types. Only
-albums are fully implemented at present.
+Albums, playlists, and possible future sources are equal collection types.
+Albums and individual tracks are implemented at present.
 
 A collection has:
 
@@ -30,10 +30,10 @@ A collection has:
 - type-specific metadata;
 - an ordered list of tracks.
 
-The collection is the source of contextual data. It determines the directory,
-track order, year, genre, cover, and album metadata in the resulting files.
-This matters because one track can appear in several albums or compilations at
-different positions.
+The collection is the source of contextual data. An album determines the
+directory, track order, year, genre, cover, and album metadata in the resulting
+files. A track collection retains its URL's album ID for metadata, but saves in
+the common artist directory without an album subdirectory or track number.
 
 ## Track
 
@@ -62,7 +62,8 @@ jobs prevent duplicates after the popup or background is reopened.
 
 Track processing obtains audio and metadata, adds ID3 data and cover art,
 builds a safe path, and hands the completed file to Firefox Downloads. The
-collection cover is also saved as a separate file.
+album cover is also saved as a separate file. A single-track collection embeds
+the cover in its MP3 but does not save a separate cover file.
 
 Pause state exists internally at three levels: all jobs, one collection, and
 one track. The popup exposes only track controls. During background recovery,
@@ -95,16 +96,16 @@ The resulting MP3 combines two data sources:
 - the selected collection provides album context, position, track count, year,
   genre, and cover art.
 
-The directory is built from a configurable template containing the genre,
-year, collection artist, and collection title. Every dynamic path segment is
-sanitized. The filename contains an optional track number and the track title,
-without the artist.
+`downloadFolder` configures only the common download directory. Albums always
+use its `artist/year album` subdirectory structure. A single track uses
+`artist/track title.mp3` beneath that directory, without a number. Every dynamic
+path segment is sanitized.
 
 ## Settings
 
 Persistent settings are stored in `src/config.js` and edited manually. They
-control audio quality, cover size, concurrency, the directory template, track
-numbering, and Firefox Downloads history behavior.
+control audio quality, cover size, concurrency, the common download directory,
+track numbering, and Firefox Downloads history behavior.
 
 ## Authorization and token storage
 
@@ -144,6 +145,7 @@ Responsibilities are distributed as follows:
   normalization, and popup presentation;
 - `src/page/album-parser.js` reconstructs album data from HTML;
 - `src/page/album.js` obtains album data;
+- `src/page/track.js` obtains individual-track data;
 - `src/page/collection.js` manages the shared collection lifecycle;
 - `src/page/download.js` performs authorized track-data and file requests;
 - `src/background/downloads-adapter.js` isolates the Firefox Downloads API;
@@ -234,6 +236,10 @@ Initial queue titles live in `metadata.trackTitles` and are indexed by the
 string form of the track ID. They are populated before processing starts.
 `Track N` is used only as a fallback when no title is available.
 
+For a `track` collection, `metadata.albumId` preserves the album context from
+the track URL. It is copied to the stored job as `collectionMetadata` so retries
+use the same metadata context and can reopen the original track URL.
+
 ## Loading order and dependencies
 
 The background uses classic scripts. Their order in `manifest.json` is also
@@ -256,8 +262,8 @@ The vendor filename ends in ASCII `.mjs`. A typo in this path causes failure
 during ID3 writing.
 
 `src/protocol.js` loads before every consumer in every context. During page
-script injection, `src/page/download.js` loads before `src/page/album.js`, which
-uses its functions.
+script injection, `src/page/download.js` loads before `src/page/album.js` and
+`src/page/track.js`, which use its functions.
 
 Classic background scripts publish services through
 `globalThis.YMF_BACKGROUND`, while page scripts use
@@ -266,9 +272,10 @@ loaders unless those loaders are redesigned together.
 
 ## Download code invariants
 
-The requested collection ID is passed through to preparation of every track.
-Album context is selected by comparing `album.id` with that ID;
-`track.albums[0]` is not automatically considered authoritative.
+The selected album ID is passed through to preparation of every track. For an
+album collection it is the collection ID; for a single-track collection it is
+stored in `metadata.albumId`. Album context is selected by comparing `album.id`
+with that ID; `track.albums[0]` is not automatically considered authoritative.
 
 If an identifier has the form `trackId:albumId`, the portion before the colon
 is used for file signing. The requested collection ID remains separate and
@@ -285,8 +292,8 @@ retrying a collection does not open one temporary tab per failed track.
 
 Retry first prefers the original tab when it is still on the stored source
 origin, then another ready tab on that origin. If neither exists, the page
-bridge creates an inactive album tab, waits for it to load, and removes only
-that extension-created tab once MAIN-world track preparation finishes or
+bridge creates an inactive album or track tab, waits for it to load, and removes
+only that extension-created tab once MAIN-world track preparation finishes or
 fails.
 
 An unfinished in-memory stage cannot resume after a background restart and is

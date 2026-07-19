@@ -110,6 +110,12 @@
         if (job.collectionType === 'album' && job.collectionId) {
             return `${origin}/album/${encodeURIComponent(job.collectionId)}`;
         }
+        if (job.collectionType === 'track' && job.collectionId
+            && job.collectionMetadata?.albumId) {
+            return `${origin}/album/${encodeURIComponent(job.collectionMetadata.albumId)}/track/${
+                encodeURIComponent(job.collectionId)
+            }`;
+        }
         return `${origin}/`;
     }
 

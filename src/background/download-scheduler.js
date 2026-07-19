@@ -126,15 +126,17 @@
         const coverDataCache = new Map();
         let coverDownloadPromise = null;
         let failedTracks = 0;
-        const saveCoverOnce = track => coverDownloadPromise ||= trackPipeline
-            .downloadCollectionCover(
-                track, normalizedCollection.subtitle, normalizedCollection.id
-            )
-            .catch(error => {
-                console.error(
-                    '[YaMa Fisher background] Could not save separate collection cover', error
-                );
-            });
+        const saveCoverOnce = normalizedCollection.type === 'album'
+            ? track => coverDownloadPromise ||= trackPipeline
+                .downloadCollectionCover(
+                    track, normalizedCollection.subtitle, normalizedCollection.id
+                )
+                .catch(error => {
+                    console.error(
+                        '[YaMa Fisher background] Could not save separate collection cover', error
+                    );
+                })
+            : null;
         const downloadTrack = async trackId => {
             try {
                 await withDownloadSlot(jobId, slotLease => trackPipeline.downloadTrack(
