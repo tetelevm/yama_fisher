@@ -17,11 +17,10 @@ coincidental.
 
 ## About the project
 
-The extension helps download music from Yandex Music. It currently supports
-albums only, but support for playlists, artists, and individual tracks can be
-added later. Their links are recognized, but downloading is not implemented.
-The extension was created exclusively for Firefox and currently works only in
-Firefox, although porting it to other browsers may be possible.
+The extension helps download music from Yandex Music. It supports albums,
+playlists, artists' top tracks, and individual tracks. It was built exclusively
+for Firefox and has only been tested there, although it could potentially be
+ported to other browsers.
 
 It was originally based on
 [Yandex Music Fisher Mod](https://github.com/vectorserver/yandex_music_fisher_mod/),
@@ -42,7 +41,7 @@ Screenshots:
 ## Installation
 
 - Download the latest project release from this
-  [link](https://github.com/tetelevm/yama_fisher/releases/download/v1.2.1/yama_fisher_1_2_1.zip).
+  [link](https://github.com/tetelevm/yama_fisher/releases/download/v1.5.1/yama_fisher_1_5_1.zip).
 - Open `about:debugging#/runtime/this-firefox` in a new Firefox tab.
 - Under `Load Temporary Add-on…`, select the downloaded archive.
 - Open an album page on Yandex Music and click the extension icon. It may be
