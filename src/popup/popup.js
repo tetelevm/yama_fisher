@@ -171,8 +171,9 @@ function truncateCollectionArtist(value) {
     return `${characters.slice(0, COLLECTION_ARTIST_VISIBLE_LENGTH).join('')}...`;
 }
 
-function createDownloadGroup(job) {
+function createDownloadGroup(job, workersStopped) {
     const group = cloneTemplate('download-collection-template');
+    const cancelControl = group.querySelector('.download-collection__cancel');
     const hideControl = group.querySelector('.download-collection__hide');
     const retryControl = group.querySelector('.download-collection__retry');
     const collectionStatus = group.querySelector('.download-collection__status');
@@ -191,9 +192,15 @@ function createDownloadGroup(job) {
     const allTracksFinished = tracks.length > 0
         && tracks.every(track => FINISHED_STATUSES.has(track.status));
     const hasFailedTracks = tracks.some(track => track.status === downloadStatus.FAILED);
+    const hasUnfinishedTracks = tracks.some(track => !FINISHED_STATUSES.has(track.status));
     collectionStatus.hidden = !allTracksCompleted;
+    cancelControl.hidden = !workersStopped || !hasUnfinishedTracks;
     hideControl.hidden = !allTracksCompleted;
     retryControl.hidden = !allTracksFinished || !hasFailedTracks;
+    cancelControl.onclick = () => requestControl(
+        {action: protocolActions.CANCEL_COLLECTION_DOWNLOADS, jobId: job.id},
+        cancelControl
+    );
     hideControl.onclick = () => requestControl(
         {action: protocolActions.REMOVE_COMPLETED_JOB, jobId: job.id},
         hideControl
@@ -264,7 +271,9 @@ function renderDownloads(state) {
     elements.downloadsHideAll.disabled = false;
 
     const scrollTop = elements.downloadsList.scrollTop;
-    elements.downloadsList.replaceChildren(...jobs.map(createDownloadGroup));
+    elements.downloadsList.replaceChildren(
+        ...jobs.map(job => createDownloadGroup(job, workersStopped))
+    );
     elements.downloadsList.scrollTop = scrollTop;
 }
 

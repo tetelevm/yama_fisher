@@ -33,6 +33,9 @@
         [actions.REMOVE_COMPLETED_JOB]: message => (
             downloadState.removeCompletedJob(message.jobId)
         ),
+        [actions.CANCEL_COLLECTION_DOWNLOADS]: message => (
+            downloadScheduler.cancelCollection(message.jobId)
+        ),
         [actions.CLEAR_COMPLETED_DOWNLOAD_HISTORY]: () => (
             downloadState.clearCompletedDownloadHistory()
         ),

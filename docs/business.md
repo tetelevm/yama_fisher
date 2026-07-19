@@ -86,6 +86,12 @@ starts while the stop is active. A downloading track held by this control keeps
 its downloading status and shows a disabled Stopped control; other tracks do
 not change. The stop button is disabled when no unfinished tracks remain.
 
+While workers are stopped, every unfinished collection shows a gray square
+Cancel button with a cross before its title. Cancelling a collection removes
+all of its queued tracks, active workers, stopped workers, and active Firefox
+downloads from the extension queue and history. Files that already finished
+downloading remain on disk.
+
 The toolbar badge shows the total number of queued, downloading, and paused
 tracks across all collections. Completed and failed tracks are not counted.
 
@@ -144,9 +150,10 @@ entries. History is intended for current downloads and is retained for 24
 hours. Only a fully successful collection has a Hide action, which removes the
 history entry and leaves downloaded files on disk. A finished collection with
 failed tracks instead has Retry. It restarts every failed track in that
-collection. Failed collections do not have a Delete action. Hide all is the
-only panel-level history action and appears only when every collection has its
-own Hide action available.
+collection. Finished failed collections do not have a Delete action. Cancel is
+available only for unfinished collections while workers are stopped. Hide all
+is the only panel-level history action and appears only when every collection
+has its own Hide action available.
 
 A failed track can be retried after its original tab is closed or navigated
 away. The extension reuses another suitable Yandex Music tab when possible. If

@@ -372,6 +372,47 @@ body {
     margin-bottom: 7px;
 }
 
+.download-collection__cancel {
+    position: relative;
+    display: block;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border: 1px solid #777a7e;
+    border-radius: 3px;
+    background: #b8babd;
+    cursor: pointer;
+    padding: 0;
+}
+
+.download-collection__cancel::before,
+.download-collection__cancel::after {
+    position: absolute;
+    top: 9px;
+    left: 5px;
+    width: 10px;
+    height: 2px;
+    background: #45484b;
+    content: '';
+}
+
+.download-collection__cancel::before {
+    transform: rotate(45deg);
+}
+
+.download-collection__cancel::after {
+    transform: rotate(-45deg);
+}
+
+.download-collection__cancel:hover:not(:disabled) {
+    background: #c7c9cc;
+}
+
+.download-collection__cancel:disabled {
+    cursor: default;
+    opacity: .55;
+}
+
 .download-collection__title {
     flex: 1 1 auto;
     min-width: 0;

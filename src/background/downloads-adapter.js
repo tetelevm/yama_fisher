@@ -39,17 +39,43 @@
         return call(method, downloadId);
     }
 
-    async function downloadFile(url, filename, onAccepted) {
+    function cancellationError(signal) {
+        return signal?.reason instanceof Error
+            ? signal.reason
+            : new Error('Collection download cancelled');
+    }
+
+    function throwIfCancelled(signal) {
+        if (signal?.aborted) throw cancellationError(signal);
+    }
+
+    async function downloadFile(url, filename, onAccepted, signal) {
         let downloadId;
+        let cancellationPromise;
+        const cancelAcceptedDownload = () => {
+            if (!Number.isInteger(downloadId)) return;
+            cancellationPromise = control(downloadId, 'cancel').catch(() => {});
+        };
+        signal?.addEventListener('abort', cancelAcceptedDownload, {once: true});
         try {
+            throwIfCancelled(signal);
             downloadId = await call('download', {
                 url, filename, saveAs: false, conflictAction: 'overwrite'
             });
+            if (signal?.aborted) {
+                cancelAcceptedDownload();
+                await cancellationPromise;
+                throw cancellationError(signal);
+            }
         } catch (error) {
-            console.error('[YaMa Fisher background] Downloads API rejected the file', {
-                filename, error: error.message
-            });
+            if (!signal?.aborted) {
+                console.error('[YaMa Fisher background] Downloads API rejected the file', {
+                    filename, error: error.message
+                });
+            }
             throw error;
+        } finally {
+            signal?.removeEventListener('abort', cancelAcceptedDownload);
         }
         onAccepted?.(downloadId);
         if (!config.saveHistory) eraseOnComplete.add(downloadId);

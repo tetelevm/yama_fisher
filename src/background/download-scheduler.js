@@ -9,19 +9,51 @@
     const config = globalThis.YMF_CONFIG;
     const {downloadStatus} = globalThis.YMF_PROTOCOL;
     const pendingCollections = new Set();
+    const activeJobRuns = new Map();
     const FINISHED_STATUSES = new Set([downloadStatus.COMPLETED, downloadStatus.FAILED]);
     const downloadLimit = Math.max(1, Math.min(Number(config.downloadCount) || 1, 8));
     const resumedSlotWaiters = [];
     const slotWaiters = [];
     let activeSlots = 0;
 
-    function acquireDownloadSlot(resumed = false) {
+    function cancellationError(signal) {
+        return signal?.reason instanceof Error
+            ? signal.reason
+            : new Error('Collection download cancelled');
+    }
+
+    function throwIfCancelled(signal) {
+        if (signal?.aborted) throw cancellationError(signal);
+    }
+
+    function waitForDownloadSlot(waiters, signal) {
+        throwIfCancelled(signal);
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = callback => {
+                if (settled) return;
+                settled = true;
+                const index = waiters.indexOf(continueDownload);
+                if (index !== -1) waiters.splice(index, 1);
+                signal?.removeEventListener('abort', cancel);
+                callback();
+            };
+            const continueDownload = () => finish(resolve);
+            const cancel = () => finish(() => reject(cancellationError(signal)));
+            waiters.push(continueDownload);
+            signal?.addEventListener('abort', cancel, {once: true});
+            if (signal?.aborted) cancel();
+        });
+    }
+
+    function acquireDownloadSlot(resumed = false, signal) {
+        throwIfCancelled(signal);
         if (activeSlots < downloadLimit) {
             activeSlots += 1;
             return Promise.resolve();
         }
         const waiters = resumed ? resumedSlotWaiters : slotWaiters;
-        return new Promise(resolve => waiters.push(resolve));
+        return waitForDownloadSlot(waiters, signal);
     }
 
     function releaseDownloadSlot() {
@@ -33,16 +65,20 @@
         activeSlots = Math.max(0, activeSlots - 1);
     }
 
-    function createDownloadSlotLease(jobId) {
+    function createDownloadSlotLease(jobId, signal) {
         let acquired = false;
 
         async function acquire(resumed) {
             if (acquired) return;
             while (true) {
-                await state.waitUntilWorkersStarted();
-                await state.waitUntilDownloadsResumed();
-                await state.waitWhileJobPaused(jobId);
-                await acquireDownloadSlot(resumed);
+                await state.waitUntilWorkersStarted(signal);
+                await state.waitUntilDownloadsResumed(signal);
+                await state.waitWhileJobPaused(jobId, signal);
+                await acquireDownloadSlot(resumed, signal);
+                if (signal?.aborted) {
+                    releaseDownloadSlot();
+                    throw cancellationError(signal);
+                }
                 // A scheduling block set while queued must return the claimed slot.
                 if (!state.isDownloadSchedulingBlocked(jobId)) break;
                 releaseDownloadSlot();
@@ -63,14 +99,39 @@
         });
     }
 
-    async function withDownloadSlot(jobId, callback) {
-        const slotLease = createDownloadSlotLease(jobId);
+    async function withDownloadSlot(jobId, signal, callback) {
+        const slotLease = createDownloadSlotLease(jobId, signal);
         await slotLease.acquire();
         try {
+            throwIfCancelled(signal);
             return await callback(slotLease);
         } finally {
             slotLease.release();
         }
+    }
+
+    function beginJobRun(jobId) {
+        if (!state.findJob(jobId)) {
+            throw new Error('Collection is no longer stored in extension history');
+        }
+        let context = activeJobRuns.get(jobId);
+        if (!context) {
+            context = {controller: new AbortController(), users: 0};
+            activeJobRuns.set(jobId, context);
+        }
+        context.users += 1;
+        let released = false;
+        return Object.freeze({
+            signal: context.controller.signal,
+            release() {
+                if (released) return;
+                released = true;
+                context.users -= 1;
+                if (!context.users && activeJobRuns.get(jobId) === context) {
+                    activeJobRuns.delete(jobId);
+                }
+            }
+        });
     }
 
     async function preloadTrackTitles(tabId, collection) {
@@ -122,37 +183,49 @@
         const jobId = await state.createDownloadJob(
             normalizedCollection, tabId, sourceOrigin
         );
-
-        const coverDataCache = new Map();
-        let coverDownloadPromise = null;
-        let failedTracks = 0;
-        const saveCoverOnce = normalizedCollection.type === 'album'
-            ? track => coverDownloadPromise ||= trackPipeline
-                .downloadCollectionCover(
-                    track, normalizedCollection.subtitle, normalizedCollection.id
-                )
-                .catch(error => {
-                    console.error(
-                        '[YaMa Fisher background] Could not save separate collection cover', error
-                    );
-                })
-            : null;
-        const downloadTrack = async trackId => {
-            try {
-                await withDownloadSlot(jobId, slotLease => trackPipeline.downloadTrack(
-                    jobId, tabId, trackId, coverDataCache, saveCoverOnce, slotLease
-                ));
-            } catch {
-                failedTracks += 1;
+        if (!state.findJob(jobId)) return;
+        const jobRun = beginJobRun(jobId);
+        const {signal} = jobRun;
+        try {
+            const coverDataCache = new Map();
+            let coverDownloadPromise = null;
+            let failedTracks = 0;
+            const saveCoverOnce = normalizedCollection.type === 'album'
+                ? track => coverDownloadPromise ||= trackPipeline
+                    .downloadCollectionCover(
+                        jobId, track, normalizedCollection.subtitle,
+                        normalizedCollection.id, signal
+                    )
+                    .catch(error => {
+                        if (signal.aborted) return;
+                        console.error(
+                            '[YaMa Fisher background] Could not save separate collection cover',
+                            error
+                        );
+                    })
+                : null;
+            const downloadTrack = async trackId => {
+                try {
+                    await withDownloadSlot(jobId, signal, slotLease => (
+                        trackPipeline.downloadTrack(
+                            jobId, tabId, trackId, coverDataCache, saveCoverOnce,
+                            slotLease, signal
+                        )
+                    ));
+                } catch {
+                    if (!signal.aborted) failedTracks += 1;
+                }
+            };
+            await Promise.all(trackIds.map(downloadTrack));
+            await coverDownloadPromise;
+            if (failedTracks && !signal.aborted) {
+                console.warn(
+                    '[YaMa Fisher background] Collection download finished with failed tracks',
+                    {jobId, failedTracks, totalTracks: trackIds.length}
+                );
             }
-        };
-        await Promise.all(trackIds.map(downloadTrack));
-        await coverDownloadPromise;
-        if (failedTracks) {
-            console.warn(
-                '[YaMa Fisher background] Collection download finished with failed tracks',
-                {jobId, failedTracks, totalTracks: trackIds.length}
-            );
+        } finally {
+            jobRun.release();
         }
     }
 
@@ -180,58 +253,86 @@
     }
 
     async function retryTracks(job, tracks) {
-        tracks.forEach(track => state.updateTrackState(job.id, track.id, {
-            status: downloadStatus.QUEUED,
-            manualPaused: false,
-            workerStopped: false,
-            error: null,
-            downloadId: null,
-            bytesReceived: 0,
-            totalBytes: null
-        }));
-        let started = false;
-        let retryTab = null;
-        // Queued retries still need the shared page, even after earlier tracks are prepared.
-        const pendingPreparations = new Set(tracks.map(track => track.id));
-        const coverDataCache = new Map();
-        const releaseRetryTab = async () => {
-            const acquiredTab = retryTab;
-            retryTab = null;
-            await acquiredTab?.release();
-        };
-        const finishPreparation = async trackId => {
-            if (!pendingPreparations.delete(trackId) || pendingPreparations.size) return;
-            await releaseRetryTab();
-        };
+        const jobRun = beginJobRun(job.id);
+        const {signal} = jobRun;
         try {
-            await state.waitUntilWorkersStarted();
-            await state.waitUntilDownloadsResumed();
-            retryTab = await pageBridge.acquireRetryTab(job);
-            await pageBridge.ensurePageTools(retryTab.tabId);
-            started = true;
-            const results = await Promise.allSettled(tracks.map(async track => {
-                try {
-                    await withDownloadSlot(job.id, slotLease => trackPipeline.downloadTrack(
-                        job.id, retryTab.tabId, track.id, coverDataCache,
-                        () => finishPreparation(track.id), slotLease
-                    ));
-                } finally {
-                    await finishPreparation(track.id);
-                }
+            tracks.forEach(track => state.updateTrackState(job.id, track.id, {
+                status: downloadStatus.QUEUED,
+                manualPaused: false,
+                workerStopped: false,
+                error: null,
+                downloadId: null,
+                bytesReceived: 0,
+                totalBytes: null
             }));
-            const failedResult = results.find(result => result.status === 'rejected');
-            if (failedResult) throw failedResult.reason;
-        } catch (error) {
-            if (!started) {
-                tracks.forEach(track => state.updateTrackState(job.id, track.id, {
-                    status: downloadStatus.FAILED,
-                    error: error.message
+            let started = false;
+            let retryTab = null;
+            // Queued retries still need the shared page after earlier tracks are prepared.
+            const pendingPreparations = new Set(tracks.map(track => track.id));
+            const coverDataCache = new Map();
+            const releaseRetryTab = async () => {
+                const acquiredTab = retryTab;
+                retryTab = null;
+                await acquiredTab?.release();
+            };
+            const finishPreparation = async trackId => {
+                if (!pendingPreparations.delete(trackId) || pendingPreparations.size) return;
+                await releaseRetryTab();
+            };
+            try {
+                await state.waitUntilWorkersStarted(signal);
+                await state.waitUntilDownloadsResumed(signal);
+                retryTab = await pageBridge.acquireRetryTab(job);
+                throwIfCancelled(signal);
+                await pageBridge.ensurePageTools(retryTab.tabId);
+                throwIfCancelled(signal);
+                started = true;
+                const results = await Promise.allSettled(tracks.map(async track => {
+                    try {
+                        await withDownloadSlot(job.id, signal, slotLease => (
+                            trackPipeline.downloadTrack(
+                                job.id, retryTab.tabId, track.id, coverDataCache,
+                                () => finishPreparation(track.id), slotLease, signal
+                            )
+                        ));
+                    } finally {
+                        await finishPreparation(track.id);
+                    }
                 }));
+                const failedResult = results.find(result => result.status === 'rejected');
+                if (failedResult) throw failedResult.reason;
+            } catch (error) {
+                if (signal.aborted) return;
+                if (!started) {
+                    tracks.forEach(track => state.updateTrackState(job.id, track.id, {
+                        status: downloadStatus.FAILED,
+                        error: error.message
+                    }));
+                }
+                throw error;
+            } finally {
+                await releaseRetryTab();
             }
-            throw error;
         } finally {
-            await releaseRetryTab();
+            jobRun.release();
         }
+    }
+
+    async function cancelCollection(jobId) {
+        await state.ready;
+        const job = state.findJob(jobId);
+        if (!job) throw new Error('Collection is no longer stored in extension history');
+        if (!(job.tracks || []).some(track => !FINISHED_STATUSES.has(track.status))) {
+            throw new Error('Only an unfinished collection can be cancelled');
+        }
+        pendingCollections.delete(getCollectionKey({
+            type: job.collectionType,
+            id: job.collectionId
+        }));
+        activeJobRuns.get(jobId)?.controller.abort(
+            new Error('Collection download cancelled')
+        );
+        await state.cancelCollectionJob(jobId);
     }
 
     async function retryTrack(jobId, trackId) {
@@ -259,6 +360,6 @@
     }
 
     background.downloadScheduler = Object.freeze({
-        downloadCollection, retryTrack, retryFailedTracks
+        downloadCollection, retryTrack, retryFailedTracks, cancelCollection
     });
 })();

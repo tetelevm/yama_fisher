@@ -90,6 +90,14 @@ identifies only controllers held by this gate and is cleared when a controller
 finishes or background state is reconciled. Resuming the workers lets held
 controllers compete for slots with resume priority.
 
+Collection cancellation is available from the popup only while workers are
+stopped. The scheduler aborts the collection's shared in-memory signal, which
+removes its waiters from worker gates and slot queues and interrupts active
+fetches. Controller leases and the collection reservation are released
+immediately even when a MAIN-world call has not returned. The state service
+cancels unfinished Firefox Downloads, including the separate album cover, then
+removes the whole job. Completed files are not deleted.
+
 The toolbar badge is derived from background download state. It counts queued,
 downloading, and paused tracks across every job, while completed and failed
 tracks do not contribute to the displayed number.
@@ -145,6 +153,10 @@ New jobs retain only the safe optional `sourceOrigin` so retry can select the
 same Yandex Music site. Existing jobs without this field remain compatible and
 fall back to `music.yandex.ru` when no suitable open tab exists.
 
+Album jobs may retain an optional `auxiliaryDownloadIds` array for the separate
+cover download. Cancellation uses it after the cover has been handed to Firefox.
+Existing jobs without this array remain compatible.
+
 ## Code map
 
 Responsibilities are distributed as follows:
@@ -162,12 +174,13 @@ Responsibilities are distributed as follows:
 - `src/page/download.js` performs authorized track-data and file requests;
 - `src/background/downloads-adapter.js` isolates the Firefox Downloads API;
 - `src/background/download-state.js` manages jobs, progress, pauses, worker
-  stop state, the toolbar badge, and recovery;
+  stop state, cancellation of accepted Firefox Downloads, the toolbar badge,
+  and recovery;
 - `src/background/page-bridge.js` manages tabs, temporary retry pages, and
   MAIN-world injection;
 - `src/background/track-pipeline.js` processes one track;
 - `src/background/download-scheduler.js` manages the queue, concurrency,
-  worker gating, and retries;
+  worker gating, collection cancellation signals, and retries;
 - `src/background/background.js` routes messages;
 - `popup/popup.html` contains the static popup shell, the upper-right GitHub
   text link, and template insertion points;
@@ -192,10 +205,11 @@ renderer keeps their labels and styles static and changes only visibility and
 command binding for the current track state. Failed tracks use the existing
 progress label and do not render a second error row.
 
-The collection template owns separate Hide and Retry controls. Hide is visible
-only when every track completed successfully. Retry is visible only when every
-track is finished and at least one failed; there is no collection Pause,
-Resume, or Delete control.
+The collection template owns separate Cancel, Hide, and Retry controls. Cancel
+is visible before the title only for an unfinished collection while workers are
+stopped. Hide is visible only when every track completed successfully. Retry is
+visible only when every track is finished and at least one failed; there is no
+collection Pause or Resume control.
 
 The downloads panel has only one history control, Hide all. It is visible only
 when every stored collection independently qualifies for its Hide action. The
@@ -221,6 +235,10 @@ explicit migration.
 
 `SET_WORKERS_STOPPED` changes only scheduler and controller gating. It does not
 write the paused status or call the Firefox pause API.
+
+`CANCEL_COLLECTION_DOWNLOADS` aborts every in-memory run for one stored job,
+cancels its accepted unfinished Firefox Downloads, and removes that job. The
+command does not erase completed downloads or local files.
 
 A normalized collection has these fields:
 
@@ -306,6 +324,11 @@ continues to determine metadata context.
 Every dynamic part of the final path passes through the existing sanitizer. A
 retry does not implement a second download path; it reruns the shared
 single-track pipeline.
+
+One abort signal is shared by every active run of a job. Cancellation removes
+worker-gate and slot waiters, aborts pipeline fetches, and prevents a blob from
+being handed to Firefox after the job is removed. Accepted unfinished Firefox
+Downloads are cancelled separately; completed files are never erased.
 
 Collection retry validates that the job is finished, snapshots all failed
 tracks, and runs them through the same global slots as individual retries. The

@@ -9,6 +9,16 @@
     const config = globalThis.YMF_CONFIG;
     const {downloadStatus} = globalThis.YMF_PROTOCOL;
 
+    function cancellationError(signal) {
+        return signal?.reason instanceof Error
+            ? signal.reason
+            : new Error('Collection download cancelled');
+    }
+
+    function throwIfCancelled(signal) {
+        if (signal?.aborted) throw cancellationError(signal);
+    }
+
     function getArtists(track, fallback = 'Unknown artist') {
         return track.artists?.map(artist => artist.name).join(', ') || fallback;
     }
@@ -94,6 +104,7 @@
             received += value.byteLength;
             onProgress(received, total);
         }
+        throwIfCancelled(controller.signal);
         onProgress(received, total || received);
         return new Uint8Array(await new Blob(chunks).arrayBuffer());
     }
@@ -104,11 +115,11 @@
         return coverUri ? `https://${coverUri}` : null;
     }
 
-    function getCoverData(track, coverDataCache, albumId) {
+    function getCoverData(track, coverDataCache, albumId, signal) {
         const coverUrl = getTrackCoverUrl(track, albumId);
         if (!coverUrl) return Promise.resolve(null);
         if (!coverDataCache.has(coverUrl)) {
-            const coverDataPromise = fetch(coverUrl)
+            const coverDataPromise = fetch(coverUrl, {signal})
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`Could not download cover: ${response.status}`);
@@ -127,14 +138,16 @@
 
     async function createTaggedAudio(data, onProgress, controller, coverDataCache, albumId) {
         await state.waitWhileBlocked(controller);
-        const audioResponse = await fetch(data.download);
+        const audioResponse = await fetch(data.download, {signal: controller.signal});
         if (!audioResponse.ok) throw new Error(`Could not download audio: ${audioResponse.status}`);
         const audioData = await readAudioData(audioResponse, onProgress, controller);
 
         const track = data.trackinfo;
         const album = getAlbum(track, albumId);
         await state.waitWhileBlocked(controller);
-        const coverData = await getCoverData(track, coverDataCache, albumId);
+        const coverData = await getCoverData(
+            track, coverDataCache, albumId, controller.signal
+        );
 
         await state.waitWhileBlocked(controller);
         const writer = new ID3Writer(audioData);
@@ -148,25 +161,32 @@
             writer.setFrame('APIC', {type: 3, data: coverData, description: 'Cover (front)'});
         }
         writer.addTag();
+        throwIfCancelled(controller.signal);
         return URL.createObjectURL(new Blob([writer.arrayBuffer], {type: 'audio/mpeg'}));
     }
 
-    async function downloadCollectionCover(track, albumArtist, albumId) {
+    async function downloadCollectionCover(jobId, track, albumArtist, albumId, signal) {
+        throwIfCancelled(signal);
         const coverUrl = getTrackCoverUrl(track, albumId);
         if (!coverUrl) {
             console.warn('[YaMa Fisher background] Collection has no cover to save separately');
             return;
         }
         const folder = createFolder(track, albumArtist, albumId);
-        await downloadsAdapter.downloadFile(coverUrl, `${folder}/cover.jpg`);
+        await downloadsAdapter.downloadFile(
+            coverUrl,
+            `${folder}/cover.jpg`,
+            downloadId => state.addAuxiliaryDownload(jobId, downloadId),
+            signal
+        );
     }
 
     async function downloadTrack(
-        jobId, tabId, trackId, coverDataCache, onTrackPrepared, slotLease
+        jobId, tabId, trackId, coverDataCache, onTrackPrepared, slotLease, signal
     ) {
         let waitingNotice;
         const {job, track, controller} = state.createTrackController(
-            jobId, trackId, slotLease
+            jobId, trackId, slotLease, signal
         );
         if (!job || !track || !controller) {
             throw new Error('Download is no longer stored in extension history');
@@ -192,6 +212,7 @@
                 world: 'MAIN'
             });
             clearTimeout(waitingNotice);
+            throwIfCancelled(signal);
             const rawData = results[0]?.result;
             if (!rawData) {
                 console.error(
@@ -206,9 +227,11 @@
                 artist: getArtists(data.trackinfo, '')
             });
             await onTrackPrepared?.(data.trackinfo);
+            throwIfCancelled(signal);
             const extensionBlobUrl = await createTaggedAudio(data,
                 (received, total) => state.updateTrackProgress(jobId, trackId, received, total),
                 controller, coverDataCache, albumId);
+            throwIfCancelled(signal);
             const downloadId = await downloadsAdapter.downloadFile(
                 extensionBlobUrl,
                 createFilename(
@@ -220,18 +243,22 @@
                     job.collectionMetadata?.topTracksCount,
                     job.collectionTitle
                 ),
-                id => state.updateTrackState(jobId, trackId, {downloadId: id})
+                id => state.updateTrackState(jobId, trackId, {downloadId: id}),
+                signal
             );
+            throwIfCancelled(signal);
             state.readDownloadProgress(downloadId);
         } catch (error) {
-            console.error('[YaMa Fisher background] Track download failed', {
-                trackId, error: error.message, stack: error.stack
-            });
-            state.updateTrackState(jobId, trackId, {
-                status: downloadStatus.FAILED,
-                manualPaused: false,
-                error: error.message
-            });
+            if (!signal?.aborted) {
+                console.error('[YaMa Fisher background] Track download failed', {
+                    trackId, error: error.message, stack: error.stack
+                });
+                state.updateTrackState(jobId, trackId, {
+                    status: downloadStatus.FAILED,
+                    manualPaused: false,
+                    error: error.message
+                });
+            }
             throw error;
         } finally {
             state.releaseTrackController(jobId, trackId);

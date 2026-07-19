@@ -116,6 +116,16 @@
         return Boolean(controller?.workerStopped || isControllerPaused(controller));
     }
 
+    function cancellationError(signal) {
+        return signal?.reason instanceof Error
+            ? signal.reason
+            : new Error('Collection download cancelled');
+    }
+
+    function throwIfCancelled(signal) {
+        if (signal?.aborted) throw cancellationError(signal);
+    }
+
     function isTrackPaused(job, track, controller) {
         if (controller) return isControllerPaused(controller);
         return Boolean(track?.manualPaused || downloadState.isPaused || job?.isPaused);
@@ -136,11 +146,33 @@
         resume?.();
     }
 
+    function waitForControllerResume(controller) {
+        const {signal} = controller;
+        throwIfCancelled(signal);
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = callback => {
+                if (settled) return;
+                settled = true;
+                if (controller.resume === continueController) controller.resume = null;
+                signal?.removeEventListener('abort', cancel);
+                callback();
+            };
+            const continueController = () => finish(resolve);
+            const cancel = () => finish(() => reject(cancellationError(signal)));
+            controller.resume = continueController;
+            signal?.addEventListener('abort', cancel, {once: true});
+            if (signal?.aborted) cancel();
+        });
+    }
+
     async function waitWhileBlocked(controller) {
+        throwIfCancelled(controller.signal);
         if (!isControllerBlocked(controller)) return;
         if (!controller.slotLease) {
             while (isControllerBlocked(controller)) {
-                await new Promise(resolve => { controller.resume = resolve; });
+                await waitForControllerResume(controller);
+                throwIfCancelled(controller.signal);
             }
             return;
         }
@@ -149,9 +181,11 @@
         controller.slotLease.release();
         while (true) {
             while (isControllerBlocked(controller)) {
-                await new Promise(resolve => { controller.resume = resolve; });
+                await waitForControllerResume(controller);
+                throwIfCancelled(controller.signal);
             }
             await controller.slotLease.reacquire();
+            throwIfCancelled(controller.signal);
             if (!isControllerBlocked(controller)) break;
             controller.slotLease.release();
         }
@@ -161,13 +195,33 @@
         });
     }
 
-    async function waitForResume(key, isPaused) {
+    function waitForResumeSignal(key, signal) {
+        throwIfCancelled(signal);
+        return new Promise((resolve, reject) => {
+            const waiters = resumeWaiters.get(key) || new Set();
+            resumeWaiters.set(key, waiters);
+            let settled = false;
+            const finish = callback => {
+                if (settled) return;
+                settled = true;
+                waiters.delete(continueDownload);
+                if (!waiters.size) resumeWaiters.delete(key);
+                signal?.removeEventListener('abort', cancel);
+                callback();
+            };
+            const continueDownload = () => finish(resolve);
+            const cancel = () => finish(() => reject(cancellationError(signal)));
+            waiters.add(continueDownload);
+            signal?.addEventListener('abort', cancel, {once: true});
+            if (signal?.aborted) cancel();
+        });
+    }
+
+    async function waitForResume(key, isPaused, signal) {
         while (isPaused()) {
-            await new Promise(resolve => {
-                if (!resumeWaiters.has(key)) resumeWaiters.set(key, new Set());
-                resumeWaiters.get(key).add(resolve);
-            });
+            await waitForResumeSignal(key, signal);
         }
+        throwIfCancelled(signal);
     }
 
     function resume(key) {
@@ -175,18 +229,19 @@
         resumeWaiters.delete(key);
     }
 
-    function waitUntilDownloadsResumed() {
-        return waitForResume('all', () => downloadState.isPaused);
+    function waitUntilDownloadsResumed(signal) {
+        return waitForResume('all', () => downloadState.isPaused, signal);
     }
 
-    function waitUntilWorkersStarted() {
-        return waitForResume('workers', () => downloadState.workersStopped);
+    function waitUntilWorkersStarted(signal) {
+        return waitForResume('workers', () => downloadState.workersStopped, signal);
     }
 
-    function waitWhileJobPaused(jobId) {
+    function waitWhileJobPaused(jobId, signal) {
         return waitForResume(
             jobId,
-            () => downloadState.jobs.find(job => job.id === jobId)?.isPaused
+            () => downloadState.jobs.find(job => job.id === jobId)?.isPaused,
+            signal
         );
     }
 
@@ -199,7 +254,7 @@
         return downloadState.workersStopped || isJobSchedulingPaused(jobId);
     }
 
-    function createTrackController(jobId, trackId, slotLease) {
+    function createTrackController(jobId, trackId, slotLease, signal) {
         const {job, track} = findTrack(jobId, trackId);
         if (!job || !track) return {job, track, controller: null};
         const controller = {
@@ -211,6 +266,7 @@
             workerStopped: Boolean(downloadState.workersStopped),
             waitingForSlot: false,
             slotLease,
+            signal,
             resume: null
         };
         activeTrackControllers.set(getTrackKey(jobId, trackId), controller);
@@ -250,6 +306,7 @@
             sourceOrigin,
             createdAt: Date.now(),
             isPaused: false,
+            auxiliaryDownloadIds: [],
             tracks: collection.entries.map((entry, index) => ({
                 id: entry.trackId,
                 albumId: entry.albumId || null,
@@ -266,6 +323,15 @@
         pruneExpiredJobs();
         await persistDownloadState();
         return job.id;
+    }
+
+    function addAuxiliaryDownload(jobId, downloadId) {
+        const job = findJob(jobId);
+        if (!job || !Number.isInteger(downloadId)) return;
+        job.auxiliaryDownloadIds ||= [];
+        if (job.auxiliaryDownloadIds.includes(downloadId)) return;
+        job.auxiliaryDownloadIds.push(downloadId);
+        void persistDownloadState();
     }
 
     function markQueuedTracksFailed(jobId, error) {
@@ -570,6 +636,32 @@
         await persistDownloadState();
     }
 
+    async function cancelCollectionJob(jobId) {
+        await ready;
+        const job = findJob(jobId);
+        if (!job) throw new Error('Collection is no longer stored in extension history');
+        const unfinishedDownloadIds = (job.tracks || [])
+            .filter(track => !FINISHED_STATUSES.has(track.status))
+            .map(track => track.downloadId)
+            .filter(Number.isInteger);
+        const downloadIds = new Set([
+            ...(job.auxiliaryDownloadIds || []).filter(Number.isInteger),
+            ...unfinishedDownloadIds
+        ]);
+        activeTrackControllers.forEach(controller => {
+            if (controller.jobId !== jobId) return;
+            // MAIN-world execution is not abortable, so release its slot before it returns.
+            controller.slotLease?.release();
+        });
+        downloadState.jobs = downloadState.jobs.filter(item => item.id !== jobId);
+        resume(jobId);
+        const operations = [...downloadIds].map(downloadId => (
+            downloadsAdapter.control(downloadId, 'cancel')
+                .catch(error => warnFirefoxDownload('cancel', downloadId, error))
+        ));
+        await Promise.all([persistDownloadState(), ...operations]);
+    }
+
     async function clearCompletedDownloadHistory() {
         await ready;
         if (!downloadState.jobs.length || !downloadState.jobs.every(canHideCollection)) {
@@ -591,9 +683,10 @@
         waitUntilWorkersStarted, waitUntilDownloadsResumed, waitWhileJobPaused,
         isDownloadSchedulingBlocked,
         updateTrackState, updateTrackProgress, createDownloadJob, markQueuedTracksFailed,
+        addAuxiliaryDownload,
         readDownloadProgress, controlDownload, setWorkersStopped, setDownloadsPaused,
         setCollectionDownloadsPaused,
-        removeCompletedTrack, removeCompletedJob,
+        removeCompletedTrack, removeCompletedJob, cancelCollectionJob,
         clearCompletedDownloadHistory
     });
 })();
