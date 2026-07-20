@@ -30,11 +30,11 @@ risk.
 
 Screenshots:
 
-![starting a download](assets/imgs/s1.png)
+![overview](assets/imgs/s1.png)
 
-![downloading](assets/imgs/s2.png)
+![download in progress](assets/imgs/s2.png)
 
-![still downloading](assets/imgs/s3.png)
+![download result](assets/imgs/s3.png)
 
 ![final result](assets/imgs/s4.png)
 

@@ -26,11 +26,11 @@
 
 Скрины, как выглядит:
 
-![скачивание](assets/imgs/s1.png)
+![общий вид](assets/imgs/s1.png)
 
-![качается](assets/imgs/s2.png)
+![скачивание](assets/imgs/s2.png)
 
-![ещё качается](assets/imgs/s3.png)
+![итог загрузки](assets/imgs/s3.png)
 
 ![итоговый результат](assets/imgs/s4.png)
 
